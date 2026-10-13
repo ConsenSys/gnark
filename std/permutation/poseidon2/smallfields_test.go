@@ -1,6 +1,7 @@
 package poseidon2
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/consensys/gnark-crypto/field/mamabear"
@@ -30,10 +31,11 @@ func (c *mamabearPermutationCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-// TestMamabearMatchesNative is what pins the in-circuit parameters: the
-// diagonal is derived from its definition here rather than shared with
-// gnark-crypto, so the only thing establishing that the two agree is running
-// the whole permutation both ways on the same input.
+// TestMamabearMatchesNative is what pins the in-circuit parameters end to end:
+// the gadget rebuilds the linear layers from addition chains rather than
+// applying gnark-crypto's dense matrices, so the only thing establishing that
+// the two compute the same function is running the whole permutation both ways
+// on the same input.
 func TestMamabearMatchesNative(t *testing.T) {
 	assert := test.NewAssert(t)
 
@@ -84,6 +86,83 @@ func TestMamabearParameters(t *testing.T) {
 		require.NotEqual(t, 0, d.Sign(), "DiagM1[%d] is zero", i)
 		require.Less(t, d.Cmp(mamabear.Modulus()), 0, "DiagM1[%d] is not reduced", i)
 	}
+
+	// mamabear is a small field, so gnark-crypto builds its external layer from
+	// the Plonky3 M4 and not the one from the Poseidon2 paper. This is read off
+	// the matrix rather than asserted, so the check is that the derivation
+	// reaches the expected answer.
+	require.Equal(t, ExternalMatrixPlonky3, p.ExternalMatrix)
+}
+
+// TestMamabearInternalMatrixShape checks the identity diagM1Of relies on:
+// gnark-crypto's dense internal matrix is J + diag(DiagM1).
+func TestMamabearInternalMatrixShape(t *testing.T) {
+	p, err := mamabearParameters()
+	require.NoError(t, err)
+
+	internal := elementsToBigInts(poseidonmamabear.GetDefaultParameters().InternalMatrix())
+	require.Len(t, internal, p.Width)
+
+	one := big.NewInt(1)
+	for i := range internal {
+		require.Len(t, internal[i], p.Width)
+		for j := range internal[i] {
+			want := new(big.Int).Set(one)
+			if i == j {
+				want.Add(want, &p.DiagM1[i]).Mod(want, mamabear.Modulus())
+			}
+			require.Zero(t, internal[i][j].Cmp(want), "internal[%d][%d]", i, j)
+		}
+	}
+}
+
+// TestMamabearExternalMatrixShape checks the block structure externalMatrixOf
+// reads M4 out of: the dense external matrix is circ(2*M4, M4, ..., M4).
+func TestMamabearExternalMatrixShape(t *testing.T) {
+	p, err := mamabearParameters()
+	require.NoError(t, err)
+
+	external := elementsToBigInts(poseidonmamabear.GetDefaultParameters().ExternalMatrix())
+	require.Len(t, external, p.Width)
+
+	for i := range external {
+		require.Len(t, external[i], p.Width)
+		for j := range external[i] {
+			want := big.NewInt(m4Plonky3[i%4][j%4])
+			if i/4 == j/4 {
+				want.Lsh(want, 1) // diagonal blocks carry 2*M4
+			}
+			require.Zero(t, external[i][j].Cmp(want), "external[%d][%d]", i, j)
+		}
+	}
+}
+
+// TestExternalMatrixOfRejectsUnknown checks that a matrix built from neither
+// known M4 is an error. The gadget implements the external layer as a fixed
+// addition chain, so silently accepting an unrecognised matrix would produce a
+// permutation disagreeing with the native one.
+func TestExternalMatrixOfRejectsUnknown(t *testing.T) {
+	// start from a valid width-8 Plonky3 external matrix, then perturb it
+	external := make([][]big.Int, 8)
+	for i := range external {
+		external[i] = make([]big.Int, 8)
+		for j := range external[i] {
+			external[i][j].SetInt64(m4Plonky3[i%4][j%4])
+			if i/4 == j/4 {
+				external[i][j].Lsh(&external[i][j], 1)
+			}
+		}
+	}
+	got, err := externalMatrixOf(external)
+	require.NoError(t, err)
+	require.Equal(t, ExternalMatrixPlonky3, got)
+
+	external[0][4].SetInt64(9) // off-diagonal block is where M4 is read from
+	_, err = externalMatrixOf(external)
+	require.Error(t, err)
+
+	_, err = externalMatrixOf(external[:6]) // not a multiple of 4
+	require.Error(t, err)
 }
 
 // TestGetDefaultParametersForFieldUnsupported checks the error path rather than
