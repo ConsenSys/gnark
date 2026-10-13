@@ -34,32 +34,54 @@ import (
 //     if zkpID == backend.GROTH16	→ R1CS
 //     if zkpID == backend.PLONK 	→ SparseR1CS
 //
-// For implementation which compiles the circuit optimized for a small-field modulus, see [CompileU32].
+// For implementation which compiles the circuit optimized for a small-field
+// modulus, see [CompileU32] and [CompileU64W1].
 func Compile(field *big.Int, newBuilder NewBuilder, circuit Circuit, opts ...CompileOption) (constraint.ConstraintSystem, error) {
 	if !constraint.FitsElement[constraint.U64](field) {
 		var supported []string
 		for _, c := range gnark.Curves() {
 			supported = append(supported, c.String())
 		}
-		return nil, fmt.Errorf("can not compile over field %s. This method supports compiling over scalar fields of supported curves: %s, and over small fields too wide for the U32 element. For compiling over small fields which fit U32 use frontend.CompileU32", field, strings.Join(supported, ", "))
+		return nil, fmt.Errorf("can not compile over field %s. This method supports compiling over scalar fields of supported curves: %s. For compiling over small fields use frontend.CompileU32", field, strings.Join(supported, ", "))
 	}
 	return CompileGeneric(field, newBuilder, circuit, opts...)
 }
 
 // CompileU32 is a variant of [Compile] which is optimized for small field
-// modulus.
+// modulus. It only accepts small fields whose modulus fits a single uint32; for
+// the wider ones see [CompileU64W1].
 //
 // NB! When compiling for a small field modulus, then the resulting [constraint.ConstraintSystem] is not
 // compatible with pairing based backends.
 func CompileU32(field *big.Int, newBuilder NewBuilderU32, circuit Circuit, opts ...CompileOption) (constraint.ConstraintSystemU32, error) {
 	if !constraint.FitsElement[constraint.U32](field) {
-		var supported []string
-		for _, c := range smallfields.Supported() {
-			supported = append(supported, c.String())
-		}
-		return nil, fmt.Errorf("can not compile over field %s. This method only supports small field moduli which fit the U32 element: %s. For scalar fields of supported elliptic curves, and for wider small fields such as mamabear, use frontend.Compile", field, strings.Join(supported, ", "))
+		return nil, fmt.Errorf("can not compile over field %s. This method only supports the following moduli: %s. For wider small fields use frontend.CompileU64W1, and for scalar fields of supported elliptic curves use frontend.Compile", field, strings.Join(supportedSmallFields[constraint.U32](), ", "))
 	}
 	return CompileGeneric(field, newBuilder, circuit, opts...)
+}
+
+// CompileU64W1 is a variant of [Compile] for small field moduli which are too
+// wide for [CompileU32] but still fit a single uint64, such as mamabear.
+//
+// NB! When compiling for a small field modulus, then the resulting [constraint.ConstraintSystem] is not
+// compatible with pairing based backends.
+func CompileU64W1(field *big.Int, newBuilder NewBuilderU64W1, circuit Circuit, opts ...CompileOption) (constraint.ConstraintSystemU64W1, error) {
+	if !constraint.FitsElement[constraint.U64W1](field) {
+		return nil, fmt.Errorf("can not compile over field %s. This method only supports the following moduli: %s. For narrower small fields use frontend.CompileU32, and for scalar fields of supported elliptic curves use frontend.Compile", field, strings.Join(supportedSmallFields[constraint.U64W1](), ", "))
+	}
+	return CompileGeneric(field, newBuilder, circuit, opts...)
+}
+
+// supportedSmallFields returns the string representation of every supported
+// small field whose modulus is represented by the element type E.
+func supportedSmallFields[E constraint.Element]() []string {
+	var supported []string
+	for _, c := range smallfields.Supported() {
+		if constraint.FitsElement[E](c) {
+			supported = append(supported, c.String())
+		}
+	}
+	return supported
 }
 
 // CompileGeneric is a generic version of [Compile] and [CompileU32]. It is

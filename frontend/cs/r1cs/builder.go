@@ -102,6 +102,11 @@ func newBuilder[E constraint.Element](field *big.Int, config frontend.CompileCon
 				bldrT.cs = grumpkinr1cs.NewR1CS(config.Capacity)
 				break
 			}
+			panic("not implemented")
+		}
+	case *builder[constraint.U64W1]:
+		switch curve {
+		default:
 			if field.Cmp(mamabear.Modulus()) == 0 {
 				bldrT.cs = mamabearr1cs.NewR1CS(config.Capacity)
 				break

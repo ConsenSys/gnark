@@ -31,7 +31,7 @@ func (c *testCircuit) Define(api frontend.API) error {
 // compileTrace compiles the test circuit over mamabear and builds its trace.
 func compileTrace(t *testing.T) (*cs.SparseR1CS, *fft.Domain, *Trace) {
 	t.Helper()
-	ccs, err := frontend.Compile(mamabear.Modulus(), scs.NewBuilder, &testCircuit{})
+	ccs, err := frontend.CompileU64W1(mamabear.Modulus(), scs.NewBuilder, &testCircuit{})
 	require.NoError(t, err)
 
 	spr, ok := ccs.(*cs.SparseR1CS)

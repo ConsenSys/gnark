@@ -118,7 +118,7 @@ func TestMamabearConstraintCount(t *testing.T) {
 	p, err := mamabearParameters()
 	require.NoError(t, err)
 
-	ccs, err := frontend.Compile(mamabear.Modulus(), r1cs.NewBuilder,
+	ccs, err := frontend.CompileU64W1(mamabear.Modulus(), r1cs.NewBuilder,
 		&mamabearPermOnlyCircuit{In: make([]frontend.Variable, p.Width)})
 	require.NoError(t, err)
 

@@ -78,8 +78,9 @@ func main() {
 		NoGKR:       true,
 		ElementType: "U32",
 	}
-	// mamabear is 49 bits and is stored in a single uint64 word, so unlike the
-	// 31-bit babybear and koalabear it is generated with the U64 element type.
+	// mamabear is 49 bits, so unlike the 31-bit babybear and koalabear it does
+	// not fit U32. It still fits a single machine word, so it uses U64W1 rather
+	// than the six-limb U64 the curve scalar fields need.
 	mama_bear_field := templateData{
 		CSPath:      "../../../constraint/mamabear/",
 		SmallField:  true,
@@ -88,7 +89,7 @@ func main() {
 		OnlyField:   true,
 		noBackend:   true,
 		NoGKR:       true,
-		ElementType: "U64",
+		ElementType: "U64W1",
 	}
 	grumpkin := templateData{
 		CSPath:      "../../../constraint/grumpkin/",
@@ -313,8 +314,18 @@ type templateData struct {
 	ElementType       string
 	// SmallField marks a field that is not the scalar field of a curve.
 	// It is independent of ElementType: mamabear is a small field stored
-	// in a U64 word, so the two must not be conflated.
+	// in a uint64 word, so the two must not be conflated.
 	SmallField bool
+}
+
+// ElementWordBits is the limb width of ElementType, 32 or 64. Templates branch
+// on it rather than on ElementType, which also encodes the number of limbs:
+// U64W1 and U64 differ in limb count but are both 64 bits wide.
+func (d templateData) ElementWordBits() int {
+	if d.ElementType == "U32" {
+		return 32
+	}
+	return 64
 }
 
 func generateGkrBackend(cfg gkrConfig) error {

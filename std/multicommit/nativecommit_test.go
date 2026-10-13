@@ -114,21 +114,21 @@ func TestWideCommitment(t *testing.T) {
 	assert.Error(err)
 
 	// should pass as we provide with builder with WideCommitment support
-	_, err = frontend.CompileU32(f, widecommitter.From[constraint.U32](r1cs.NewBuilder), &wideCommitment{withCommitment: false})
+	_, err = frontend.CompileGeneric(f, widecommitter.From[constraint.U32](r1cs.NewBuilder), &wideCommitment{withCommitment: false})
 	assert.NoError(err)
-	_, err = frontend.CompileU32(f, widecommitter.From[constraint.U32](scs.NewBuilder), &wideCommitment{withCommitment: false})
+	_, err = frontend.CompileGeneric(f, widecommitter.From[constraint.U32](scs.NewBuilder), &wideCommitment{withCommitment: false})
 	assert.NoError(err)
 
 	// shouldn't pass if we have mixed WithCommitment and WithWideCommitment
-	_, err = frontend.CompileU32(f, widecommitter.From[constraint.U32](scs.NewBuilder), &wideCommitment{withCommitment: true})
+	_, err = frontend.CompileGeneric(f, widecommitter.From[constraint.U32](scs.NewBuilder), &wideCommitment{withCommitment: true})
 	assert.Error(err)
-	_, err = frontend.CompileU32(f, widecommitter.From[constraint.U32](r1cs.NewBuilder), &wideCommitment{withCommitment: true})
+	_, err = frontend.CompileGeneric(f, widecommitter.From[constraint.U32](r1cs.NewBuilder), &wideCommitment{withCommitment: true})
 	assert.Error(err)
 }
 
-// TestWideCommitmentMamabear is the U64 counterpart of TestWideCommitment.
-// mamabear is a small field whose constraint system uses the U64 element, so it
-// goes through frontend.Compile rather than CompileU32 and exercises the U64
+// TestWideCommitmentMamabear is the U64W1 counterpart of TestWideCommitment.
+// mamabear is a small field whose constraint system uses the U64W1 element, so
+// it goes through frontend.CompileU64W1 rather than CompileU32 and exercises the U64W1
 // instantiation of the widecommitter wrapper.
 func TestWideCommitmentMamabear(t *testing.T) {
 	f := mamabear.Modulus()
@@ -145,20 +145,20 @@ func TestWideCommitmentMamabear(t *testing.T) {
 	assert.NoError(err)
 
 	// should fail as the plain builders have no WideCommitment support
-	_, err = frontend.Compile(f, r1cs.NewBuilder, &wideCommitment{withCommitment: false, degree: deg})
+	_, err = frontend.CompileU64W1(f, r1cs.NewBuilder, &wideCommitment{withCommitment: false, degree: deg})
 	assert.Error(err)
-	_, err = frontend.Compile(f, scs.NewBuilder, &wideCommitment{withCommitment: false, degree: deg})
+	_, err = frontend.CompileU64W1(f, scs.NewBuilder, &wideCommitment{withCommitment: false, degree: deg})
 	assert.Error(err)
 
 	// should pass as we provide a builder with WideCommitment support
-	_, err = frontend.Compile(f, widecommitter.From[constraint.U64](r1cs.NewBuilder), &wideCommitment{withCommitment: false, degree: deg})
+	_, err = frontend.CompileGeneric(f, widecommitter.From[constraint.U64W1](r1cs.NewBuilder), &wideCommitment{withCommitment: false, degree: deg})
 	assert.NoError(err)
-	_, err = frontend.Compile(f, widecommitter.From[constraint.U64](scs.NewBuilder), &wideCommitment{withCommitment: false, degree: deg})
+	_, err = frontend.CompileGeneric(f, widecommitter.From[constraint.U64W1](scs.NewBuilder), &wideCommitment{withCommitment: false, degree: deg})
 	assert.NoError(err)
 
 	// shouldn't pass if we have mixed WithCommitment and WithWideCommitment
-	_, err = frontend.Compile(f, widecommitter.From[constraint.U64](scs.NewBuilder), &wideCommitment{withCommitment: true, degree: deg})
+	_, err = frontend.CompileGeneric(f, widecommitter.From[constraint.U64W1](scs.NewBuilder), &wideCommitment{withCommitment: true, degree: deg})
 	assert.Error(err)
-	_, err = frontend.Compile(f, widecommitter.From[constraint.U64](r1cs.NewBuilder), &wideCommitment{withCommitment: true, degree: deg})
+	_, err = frontend.CompileGeneric(f, widecommitter.From[constraint.U64W1](r1cs.NewBuilder), &wideCommitment{withCommitment: true, degree: deg})
 	assert.Error(err)
 }

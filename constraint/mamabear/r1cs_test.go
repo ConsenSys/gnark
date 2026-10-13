@@ -32,10 +32,10 @@ func TestSerialization(t *testing.T) {
 	for name := range circuits.Circuits {
 		t.Run(name, func(t *testing.T) {
 			tc := circuits.Circuits[name]
-			if tc.U64Only {
+			if tc.CurveOnly {
 				t.Skip("circuit does not support small fields")
 			}
-			builder := r1cs.NewBuilder[constraint.U64]
+			builder := r1cs.NewBuilder[constraint.U64W1]
 			if name == "commit" {
 				// smallfield builders do not support commitment. We use the wrapper which has the methods
 				builder = widecommitter.From(builder)
@@ -166,7 +166,7 @@ func BenchmarkSolve(b *testing.B) {
 
 	b.Run("scs", func(b *testing.B) {
 		var c circuit
-		ccs, err := frontend.CompileGeneric[constraint.U64](fr.Modulus(), scs.NewBuilder, &c)
+		ccs, err := frontend.CompileGeneric[constraint.U64W1](fr.Modulus(), scs.NewBuilder, &c)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -180,7 +180,7 @@ func BenchmarkSolve(b *testing.B) {
 
 	b.Run("r1cs", func(b *testing.B) {
 		var c circuit
-		ccs, err := frontend.CompileGeneric[constraint.U64](fr.Modulus(), r1cs.NewBuilder, &c, frontend.WithCompressThreshold(10))
+		ccs, err := frontend.CompileGeneric[constraint.U64W1](fr.Modulus(), r1cs.NewBuilder, &c, frontend.WithCompressThreshold(10))
 		if err != nil {
 			b.Fatal(err)
 		}

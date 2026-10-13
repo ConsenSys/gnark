@@ -343,18 +343,18 @@ func (s *solver) divByCoeff(res *fr.Element, cID uint32) {
 }
 
 // Implement constraint.Solver
-func (s *solver) GetValue(cID, vID uint32) constraint.U64 {
-	var r constraint.U64
+func (s *solver) GetValue(cID, vID uint32) constraint.U64W1 {
+	var r constraint.U64W1
 	e := s.computeTerm(constraint.Term{CID: cID, VID: vID})
 	copy(r[:], e[:])
 	return r
 }
-func (s *solver) GetCoeff(cID uint32) constraint.U64 {
-	var r constraint.U64
+func (s *solver) GetCoeff(cID uint32) constraint.U64W1 {
+	var r constraint.U64W1
 	copy(r[:], s.Coefficients[cID][:])
 	return r
 }
-func (s *solver) SetValue(vID uint32, f constraint.U64) {
+func (s *solver) SetValue(vID uint32, f constraint.U64W1) {
 	s.set(int(vID), *(*fr.Element)(f[:]))
 }
 
@@ -369,7 +369,7 @@ func (s *solver) GetBlueprint(id constraint.BlueprintID) constraint.Blueprint {
 
 // Read interprets input calldata as either a LinearExpression (if R1CS) or a Term (if Plonkish),
 // evaluates it and return the result and the number of uint32 word read.
-func (s *solver) Read(calldata []uint32) (constraint.U64, int) {
+func (s *solver) Read(calldata []uint32) (constraint.U64W1, int) {
 	if s.Type == constraint.SystemSparseR1CS {
 		if calldata[0] != 1 {
 			panic("invalid calldata")
@@ -385,7 +385,7 @@ func (s *solver) Read(calldata []uint32) (constraint.U64, int) {
 		j += 2
 	}
 
-	var ret constraint.U64
+	var ret constraint.U64W1
 	copy(ret[:], r[:])
 	return ret, j
 }
@@ -401,27 +401,27 @@ func (s *solver) processInstruction(pi constraint.PackedInstruction, scratch *sc
 
 	if s.Type == constraint.SystemSparseR1CS {
 		switch blueprint.(type) {
-		case *constraint.BlueprintSparseR1CAdd[constraint.U64]:
+		case *constraint.BlueprintSparseR1CAdd[constraint.U64W1]:
 			s.solveSparseR1CAdd(calldata)
 			s.setSparseLRO(cID, calldata[0], calldata[1], calldata[2])
 			return nil
-		case *constraint.BlueprintSparseR1CMul[constraint.U64]:
+		case *constraint.BlueprintSparseR1CMul[constraint.U64W1]:
 			s.solveSparseR1CMul(calldata)
 			s.setSparseLRO(cID, calldata[0], calldata[1], calldata[2])
 			return nil
-		case *constraint.BlueprintSparseR1CBool[constraint.U64]:
+		case *constraint.BlueprintSparseR1CBool[constraint.U64W1]:
 			if err := s.solveSparseR1CBool(calldata); err != nil {
 				return s.wrapErrWithDebugInfo(cID, err)
 			}
 			s.setSparseLRO(cID, calldata[0], calldata[0], 0)
 			return nil
-		case *constraint.BlueprintGenericSparseR1C[constraint.U64]:
+		case *constraint.BlueprintGenericSparseR1C[constraint.U64W1]:
 			if err := s.solveGenericSparseR1C(calldata); err != nil {
 				return s.wrapErrWithDebugInfo(cID, err)
 			}
 			s.setSparseLRO(cID, calldata[0], calldata[1], calldata[2])
 			return nil
-		case *constraint.BlueprintBatchInverse[constraint.U64]:
+		case *constraint.BlueprintBatchInverse[constraint.U64W1]:
 			s.solveBatchInverse(calldata, pi.WireOffset, scratch)
 			return nil
 		}
@@ -441,7 +441,7 @@ func (s *solver) processInstruction(pi constraint.PackedInstruction, scratch *sc
 	// fall back to the generic BlueprintSolvable interface; for SCS blueprints
 	// that aren't fast-pathed we still need to fill L,R,O after Solve.
 	inst := pi.Unpack(&s.System)
-	bc, ok := blueprint.(constraint.BlueprintSolvable[constraint.U64])
+	bc, ok := blueprint.(constraint.BlueprintSolvable[constraint.U64W1])
 	if !ok {
 		return nil
 	}

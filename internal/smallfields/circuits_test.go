@@ -42,30 +42,30 @@ var testCases = []struct {
 	name            string
 	modulus         *big.Int
 	supportsCompile bool
-	// u64 marks a small field whose constraint system uses the U64 element
-	// type. mamabear is 49 bits, so it does not fit the U32 element the 31-bit
-	// fields use, even though it is just as much a small field.
-	u64 bool
 }{
-	{"tinyfield", tinyfield.Modulus(), true, false},
-	{"babybear", babybear.Modulus(), true, false},
-	{"koalabear", koalabear.Modulus(), true, false},
-	{"mamabear", mamabear.Modulus(), true, true},
+	{"tinyfield", tinyfield.Modulus(), true},
+	{"babybear", babybear.Modulus(), true},
+	{"koalabear", koalabear.Modulus(), true},
+	{"mamabear", mamabear.Modulus(), true},
 }
 
-// solvable is the part of a constraint system this test needs. The U32 and U64
-// constraint systems share no common interface, so we narrow to what is used.
+// solvable is the part of a constraint system this test needs. The constraint
+// systems for the different element types share no common interface, so we
+// narrow to what is used.
 type solvable interface {
 	IsSolved(witness witness.Witness, opts ...solver.Option) error
 }
 
 // compileSmallField compiles with the element type matching the field's
-// constraint system.
-func compileSmallField(u64 bool, modulus *big.Int, newBuilderU32 frontend.NewBuilderU32, newBuilderU64 frontend.NewBuilder, circuit frontend.Circuit) (solvable, error) {
-	if u64 {
-		return frontend.Compile(modulus, newBuilderU64, circuit)
+// constraint system: mamabear is 49 bits, so it does not fit the U32 element
+// the 31-bit fields use, even though it is just as much a small field. The
+// builders have to be passed already instantiated, a function parameter not
+// being allowed to carry type parameters of its own.
+func compileSmallField(modulus *big.Int, newBuilderU32 frontend.NewBuilderU32, newBuilderU64W1 frontend.NewBuilderU64W1, circuit frontend.Circuit) (solvable, error) {
+	if constraint.FitsElement[constraint.U64W1](modulus) {
+		return frontend.CompileGeneric(modulus, newBuilderU64W1, circuit)
 	}
-	return frontend.CompileU32(modulus, newBuilderU32, circuit)
+	return frontend.CompileGeneric(modulus, newBuilderU32, circuit)
 }
 
 func TestNativeCircuitTestSolve(t *testing.T) {
@@ -85,7 +85,7 @@ func TestNativeCircuitCompileAndSolve(t *testing.T) {
 			continue
 		}
 		assert.Run(func(assert *test.Assert) {
-			ccs, err := compileSmallField(tc.u64, tc.modulus, r1cs.NewBuilder, r1cs.NewBuilder, &NativeCircuit{})
+			ccs, err := compileSmallField(tc.modulus, r1cs.NewBuilder, r1cs.NewBuilder, &NativeCircuit{})
 			assert.NoError(err)
 			assignment := &NativeCircuit{A: 2, B: 4}
 			wit, err := frontend.NewWitness(assignment, tc.modulus)
@@ -95,7 +95,7 @@ func TestNativeCircuitCompileAndSolve(t *testing.T) {
 
 		}, fmt.Sprintf("ccs=r1cs/field=%s", tc.name))
 		assert.Run(func(assert *test.Assert) {
-			ccs, err := compileSmallField(tc.u64, tc.modulus, scs.NewBuilder, scs.NewBuilder, &NativeCircuit{})
+			ccs, err := compileSmallField(tc.modulus, scs.NewBuilder, scs.NewBuilder, &NativeCircuit{})
 			assert.NoError(err)
 			assignment := &NativeCircuit{A: 2, B: 4}
 			wit, err := frontend.NewWitness(assignment, tc.modulus)

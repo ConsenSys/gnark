@@ -28,7 +28,7 @@ func TestSerialization(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 		tc := circuits.Circuits[name]
 		{{- if .SmallField}}
-		if tc.U64Only {
+		if tc.CurveOnly {
 			t.Skip("circuit does not support small fields")
 		}
 		{{- end}}

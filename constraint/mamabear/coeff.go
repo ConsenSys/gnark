@@ -74,7 +74,7 @@ func (ct *CoeffTable) fromBytes(buf []byte) error {
 	return nil
 }
 
-func (ct *CoeffTable) AddCoeff(coeff constraint.U64) uint32 {
+func (ct *CoeffTable) AddCoeff(coeff constraint.U64W1) uint32 {
 	c := (*fr.Element)(coeff[:])
 	var cID uint32
 	if c.IsZero() {
@@ -100,7 +100,7 @@ func (ct *CoeffTable) AddCoeff(coeff constraint.U64) uint32 {
 	return cID
 }
 
-func (ct *CoeffTable) MakeTerm(coeff constraint.U64, variableID int) constraint.Term {
+func (ct *CoeffTable) MakeTerm(coeff constraint.U64W1, variableID int) constraint.Term {
 	cID := ct.AddCoeff(coeff)
 	return constraint.Term{VID: uint32(variableID), CID: cID}
 }
@@ -113,7 +113,7 @@ func (ct *CoeffTable) CoeffToString(cID int) string {
 // implements constraint.Field
 type field struct{}
 
-var _ constraint.Field[constraint.U64] = &field{}
+var _ constraint.Field[constraint.U64W1] = &field{}
 
 var (
 	two      fr.Element
@@ -129,7 +129,7 @@ func init() {
 	minusTwo.Neg(&two)
 }
 
-func (engine *field) FromInterface(i interface{}) constraint.U64 {
+func (engine *field) FromInterface(i interface{}) constraint.U64W1 {
 	var e fr.Element
 	if _, err := e.SetInterface(i); err != nil {
 		// need to clean that --> some code path are dissimilar
@@ -138,43 +138,43 @@ func (engine *field) FromInterface(i interface{}) constraint.U64 {
 		b := utils.FromInterface(i)
 		e.SetBigInt(&b)
 	}
-	var r constraint.U64
+	var r constraint.U64W1
 	copy(r[:], e[:])
 	return r
 }
-func (engine *field) ToBigInt(c constraint.U64) *big.Int {
+func (engine *field) ToBigInt(c constraint.U64W1) *big.Int {
 	e := (*fr.Element)(c[:])
 	r := new(big.Int)
 	e.BigInt(r)
 	return r
 
 }
-func (engine *field) Mul(a, b constraint.U64) constraint.U64 {
+func (engine *field) Mul(a, b constraint.U64W1) constraint.U64W1 {
 	_a := (*fr.Element)(a[:])
 	_b := (*fr.Element)(b[:])
 	_a.Mul(_a, _b)
 	return a
 }
 
-func (engine *field) Add(a, b constraint.U64) constraint.U64 {
+func (engine *field) Add(a, b constraint.U64W1) constraint.U64W1 {
 	_a := (*fr.Element)(a[:])
 	_b := (*fr.Element)(b[:])
 	_a.Add(_a, _b)
 	return a
 }
-func (engine *field) Sub(a, b constraint.U64) constraint.U64 {
+func (engine *field) Sub(a, b constraint.U64W1) constraint.U64W1 {
 	_a := (*fr.Element)(a[:])
 	_b := (*fr.Element)(b[:])
 	_a.Sub(_a, _b)
 	return a
 }
-func (engine *field) Neg(a constraint.U64) constraint.U64 {
+func (engine *field) Neg(a constraint.U64W1) constraint.U64W1 {
 	e := (*fr.Element)(a[:])
 	e.Neg(e)
 	return a
 
 }
-func (engine *field) Inverse(a constraint.U64) (constraint.U64, bool) {
+func (engine *field) Inverse(a constraint.U64W1) (constraint.U64W1, bool) {
 	if a.IsZero() {
 		return a, false
 	}
@@ -194,24 +194,24 @@ func (engine *field) Inverse(a constraint.U64) (constraint.U64, bool) {
 	return a, true
 }
 
-func (engine *field) IsOne(a constraint.U64) bool {
+func (engine *field) IsOne(a constraint.U64W1) bool {
 	e := (*fr.Element)(a[:])
 	return e.IsOne()
 }
 
-func (engine *field) One() constraint.U64 {
+func (engine *field) One() constraint.U64W1 {
 	e := fr.One()
-	var r constraint.U64
+	var r constraint.U64W1
 	copy(r[:], e[:])
 	return r
 }
 
-func (engine *field) String(a constraint.U64) string {
+func (engine *field) String(a constraint.U64W1) string {
 	e := (*fr.Element)(a[:])
 	return e.String()
 }
 
-func (engine *field) Uint64(a constraint.U64) (uint64, bool) {
+func (engine *field) Uint64(a constraint.U64W1) (uint64, bool) {
 	e := (*fr.Element)(a[:])
 	if !e.IsUint64() {
 		return 0, false
