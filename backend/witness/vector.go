@@ -95,23 +95,23 @@ func newFrom(from any, n int) (any, error) {
 func leafType(v any) reflect.Type {
 	switch v.(type) {
 	case fr_bn254.Vector:
-		return reflect.TypeOf(fr_bn254.Element{})
+		return reflect.TypeFor[fr_bn254.Element]()
 	case fr_bls12377.Vector:
-		return reflect.TypeOf(fr_bls12377.Element{})
+		return reflect.TypeFor[fr_bls12377.Element]()
 	case fr_bls12381.Vector:
-		return reflect.TypeOf(fr_bls12381.Element{})
+		return reflect.TypeFor[fr_bls12381.Element]()
 	case fr_bw6761.Vector:
-		return reflect.TypeOf(fr_bw6761.Element{})
+		return reflect.TypeFor[fr_bw6761.Element]()
 	case fr_grumpkin.Vector:
-		return reflect.TypeOf(fr_grumpkin.Element{})
+		return reflect.TypeFor[fr_grumpkin.Element]()
 	case tinyfield.Vector:
-		return reflect.TypeOf(tinyfield.Element{})
+		return reflect.TypeFor[tinyfield.Element]()
 	case babybear.Vector:
-		return reflect.TypeOf(babybear.Element{})
+		return reflect.TypeFor[babybear.Element]()
 	case koalabear.Vector:
-		return reflect.TypeOf(koalabear.Element{})
+		return reflect.TypeFor[koalabear.Element]()
 	case mamabear.Vector:
-		return reflect.TypeOf(mamabear.Element{})
+		return reflect.TypeFor[mamabear.Element]()
 	default:
 		panic("invalid input")
 	}
