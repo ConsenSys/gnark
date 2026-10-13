@@ -27,7 +27,7 @@ type G2 struct {
 
 	// Precomputed constants for the GLV+FakeGLV scalar mul ([EEMP25] §3.3).
 	g2Gen      *g2AffP // G2 generator
-	g2GenNbits *g2AffP // [2^(nbits-1)]G2 with nbits = (r.BitLen()+3)/4 + 2
+	g2GenNbits *g2AffP // [2^(nbits-1)]G2 with nbits = (r.BitLen()+3)/4 + 1
 }
 
 type g2AffP struct {
@@ -35,6 +35,11 @@ type g2AffP struct {
 }
 
 // G2Affine represents G2 element with optional embedded line precomputations.
+//
+// When Lines is set, [Pairing.MillerLoop] and [Pairing.Pair] use the
+// precomputed lines directly and never read P: the lines are trusted input
+// and are not constrained to correspond to P. See
+// [NewG2AffineFixedPlaceholder] for the security assumptions.
 type G2Affine struct {
 	P     g2AffP
 	Lines *lineEvaluations
@@ -96,15 +101,15 @@ func NewG2(api frontend.API) (*G2, error) {
 			A1: *fp.NewElement("927553665492332455747201965776037880757740193453592970025027978793976877002675564980949289727957565575433344219582"),
 		},
 	}
-	// [2^(nbits-1)]G2 where nbits = (255+3)/4 + 2 = 66, so this is [2^65]G2.
+	// [2^(nbits-1)]G2 where nbits = (255+3)/4 + 1 = 65, so this is [2^64]G2.
 	g2GenNbits := &g2AffP{
 		X: fields_bls12381.E2{
-			A0: *fp.NewElement("1307001654908388153254394944417118155033503188409787277795273489312551176370209873126740711463572657296916966732684"),
-			A1: *fp.NewElement("1066804690119577865989830850277879393407029322116864061755683314318400220056817483617033672656485029228353937929571"),
+			A0: *fp.NewElement("3301848440670724259140706638333507017270073840991444062130369473322504802279997762071965204605602880645098143635804"),
+			A1: *fp.NewElement("1433247473484811575122071252549581543219505413215333519923845874993611449657376371132448509415226221815572147621561"),
 		},
 		Y: fields_bls12381.E2{
-			A0: *fp.NewElement("1233864651366532660795929818904272589705597977637697925481983092108793193162343169655985724823869788077854535468808"),
-			A1: *fp.NewElement("2703972434797875065063829955607449483769333186572810763171217085444622779819503421195150761462859837038921185079043"),
+			A0: *fp.NewElement("1426074667836811492054371797466616700133886925793677035626411405456898211637926213257131071435551354558768304539958"),
+			A1: *fp.NewElement("1551115808906539952939058035985599484510999034415063709273127009249540606507540031231198724146141840052652374305625"),
 		},
 	}
 
@@ -136,6 +141,11 @@ func NewG2Affine(v bls12381.G2Affine) G2Affine {
 
 // NewG2AffineFixed returns witness of v with precomputations for efficient
 // pairing computation.
+//
+// When the value is used as a witness, the precomputed lines are not
+// constrained to correspond to the point coordinates — see
+// [NewG2AffineFixedPlaceholder] for the security assumptions of precomputed
+// lines.
 func NewG2AffineFixed(v bls12381.G2Affine) G2Affine {
 	if !v.IsInSubGroup() {
 		// for the pairing check we check that G2 point is already in the
@@ -156,6 +166,18 @@ func NewG2AffineFixed(v bls12381.G2Affine) G2Affine {
 // NewG2AffineFixedPlaceholder returns a placeholder for the circuit compilation
 // when witness will be given with line precomputations using
 // [NewG2AffineFixed].
+//
+// Security note: the placeholder allocates the point coordinates and all line
+// evaluations as witness variables. [Pairing.MillerLoop] and [Pairing.Pair]
+// consume the line evaluations directly: they neither constrain the lines to
+// correspond to the point coordinates nor check the coordinates are on the
+// curve or in the correct subgroup. The witness assignment is therefore
+// trusted — use this placeholder only when the assignment is fixed by the
+// circuit author (e.g. a hardcoded verifying key or SRS), or when the pairing
+// result is checked with [Pairing.PairingCheck], which binds the result to
+// the point coordinates. For prover-supplied G2 points used with
+// [Pairing.Pair] or [Pairing.MillerLoop], use [NewG2Affine] instead so that
+// the lines are computed in-circuit from the constrained coordinates.
 func NewG2AffineFixedPlaceholder() G2Affine {
 	var lines lineEvaluations
 	for i := 0; i < len(bls12381.LoopCounter)-1; i++ {
@@ -565,6 +587,77 @@ func (g2 *G2) Select(b frontend.Variable, p, q *G2Affine) *G2Affine {
 }
 
 // AssertIsEqual asserts that p and q are the same point.
+// assertIsOnCurve asserts that P satisfies the BLS12-381 G2 (twist) curve
+// equation Y² = X³ + b over 𝔽ₚ². The constant b is recovered from the
+// (on-curve, in-subgroup) generator as b = Gy² − Gx³, avoiding a hardcoded literal.
+func (g2 *G2) assertIsOnCurve(P *G2Affine) {
+	x3 := g2.Ext2.Mul(&P.P.X, g2.Ext2.Square(&P.P.X))
+	lhs := g2.Ext2.Sub(g2.Ext2.Square(&P.P.Y), x3)
+	gx3 := g2.Ext2.Mul(&g2.g2Gen.X, g2.Ext2.Square(&g2.g2Gen.X))
+	rhs := g2.Ext2.Sub(g2.Ext2.Square(&g2.g2Gen.Y), gx3)
+	g2.Ext2.AssertIsEqual(lhs, rhs)
+}
+
+// mulByConstant returns [k]P for a fixed k > 0, via a width-4 signed-window (NAF)
+// double-and-add using complete (unified) operations, so it is exception-free for
+// any on-curve P. The signed window trims the additions to ~the w-NAF weight (vs
+// the binary Hamming weight); the doubling count is unchanged. All operations stay
+// unified (infinity-complete), which is soundness-critical since P is an
+// adversarial preimage. k is a [big.Int] because the cofactor-clearing constant
+// can exceed 64 bits.
+func (g2 *G2) mulByConstant(P *G2Affine, k *big.Int) *G2Affine {
+	digits := naf4Digits(k) // LSB-first; each digit is 0 or an odd d with |d| < 8
+	// precompute the odd multiples 1P, 3P, 5P, 7P (negated on demand)
+	p2 := g2.doubleGeneric(P, true)
+	var odd [8]*G2Affine
+	odd[1] = P
+	odd[3] = g2.AddUnified(p2, P)
+	odd[5] = g2.AddUnified(odd[3], p2)
+	odd[7] = g2.AddUnified(odd[5], p2)
+	pick := func(d int8) *G2Affine {
+		if d > 0 {
+			return odd[d]
+		}
+		return g2.neg(odd[-d])
+	}
+	top := len(digits) - 1
+	for top >= 0 && digits[top] == 0 {
+		top--
+	}
+	acc := pick(digits[top])
+	for i := top - 1; i >= 0; i-- {
+		acc = g2.doubleGeneric(acc, true) // unified (complete) doubling
+		if digits[i] != 0 {
+			acc = g2.AddUnified(acc, pick(digits[i]))
+		}
+	}
+	return acc
+}
+
+// naf4Digits returns the width-4 non-adjacent form of k > 0, least-significant
+// digit first: each digit is 0 or an odd integer with |d| < 8, nonzero digits are
+// at least 4 positions apart, and Σ digits[i]·2^i == k.
+func naf4Digits(k *big.Int) []int8 {
+	k = new(big.Int).Set(k)
+	mask := big.NewInt(15)
+	tmp := new(big.Int)
+	var digits []int8
+	for k.Sign() > 0 {
+		var d int8
+		if k.Bit(0) == 1 {
+			m := int8(tmp.And(k, mask).Int64())
+			if m >= 8 {
+				m -= 16
+			}
+			d = m
+			k.Sub(k, big.NewInt(int64(d)))
+		}
+		digits = append(digits, d)
+		k.Rsh(k, 1)
+	}
+	return digits
+}
+
 func (g2 *G2) AssertIsEqual(p, q *G2Affine) {
 	g2.Ext2.AssertIsEqual(&p.P.X, &q.P.X)
 	g2.Ext2.AssertIsEqual(&p.P.Y, &q.P.Y)
@@ -666,7 +759,51 @@ func (g2 *G2) scalarMulGeneric(p *G2Affine, s *Scalar, opts ...algopts.AlgebraOp
 //
 // [EEMP25]: https://eprint.iacr.org/2025/933
 func (g2 *G2) ScalarMul(Q *G2Affine, s *Scalar, opts ...algopts.AlgebraOption) *G2Affine {
-	return g2.scalarMulGLVAndFakeGLV(Q, s, opts...)
+	// when Q is a compile-time constant subgroup point (for example a fixed
+	// verification-key or SRS point), use the fixed-base comb method with
+	// precomputed tables (see fixedbase_g2.go). It uses complete arithmetic
+	// and handles the zero scalar; [algopts.WithIncompleteArithmetic] is a
+	// no-op on this path.
+	if d, ok := g2.g2CombTryConst(Q); ok {
+		return g2.scalarMulComb(d, s)
+	}
+	R := g2.scalarMulGLVAndFakeGLV(Q, s, opts...)
+	g2.assertPointInSubgroup(R)
+	return R
+}
+
+// assertPointInSubgroup binds an arbitrary hinted G2 point R into the prime-order
+// subgroup via a preimage check: it hints S = [c⁻¹ mod r]·R (reusing
+// scalarMulG2CofactorPreimageHint with the scalar input s = 1) and asserts S
+// on-curve and [c]S == R, where c = g2CofactorClearingConstant clears every
+// cofactor torsion of order < 2^nbits. A torsion-shifted R = R₀ + T (R₀ in the
+// subgroup, ord(T) | c) has no on-curve preimage under [c], so it is rejected.
+//
+// Being point-based (independent of the scalar-mul inputs) it can be applied once
+// to an aggregate MSM output instead of once per summand: each summand's
+// accumulator forces its subgroup part exactly, so binding the sum forces the net
+// torsion to O. See [G2.MultiScalarMul].
+//
+// The R = O case (encoded (0,0)) has no affine preimage, so a dummy in-subgroup
+// point is substituted and the equality is made vacuous to preserve completeness.
+func (g2 *G2) assertPointInSubgroup(R *G2Affine) {
+	skip := g2.api.And(g2.Ext2.IsZero(&R.P.X), g2.Ext2.IsZero(&R.P.Y))
+	dummy := &G2Affine{P: *g2.g2Gen} // in-subgroup, so [c][c⁻¹]dummy == dummy
+	Rsafe := g2.Select(skip, dummy, R)
+	_, preimg, _, err := emulated.NewVarGenericHint(g2.api, 0, 4, 0, nil,
+		[]*emulated.Element[BaseField]{&Rsafe.P.X.A0, &Rsafe.P.X.A1, &Rsafe.P.Y.A0, &Rsafe.P.Y.A1},
+		[]*emulated.Element[ScalarField]{g2.fr.One()},
+		scalarMulG2CofactorPreimageHint)
+	if err != nil {
+		panic(fmt.Sprintf("scalarMulG2CofactorPreimageHint: %v", err))
+	}
+	S := &G2Affine{P: g2AffP{
+		X: fields_bls12381.E2{A0: *preimg[0], A1: *preimg[1]},
+		Y: fields_bls12381.E2{A0: *preimg[2], A1: *preimg[3]},
+	}}
+	g2.assertIsOnCurve(S)
+	cS := g2.mulByConstant(S, g2CofactorClearingConstant)
+	g2.AssertIsEqual(cS, g2.Select(skip, cS, R))
 }
 
 // scalarMulGLVAndFakeGLV computes [s]Q using GLV+FakeGLV with r^(1/4) bounds.
@@ -694,8 +831,11 @@ func (g2 *G2) scalarMulGLVAndFakeGLV(Q *G2Affine, s *Scalar, opts ...algopts.Alg
 		panic(err)
 	}
 	var st ScalarField
-	// LLL Hermite bound: u_i, v_i < γ₄·r^(1/4), fits in (BitLen+3)/4 + 2 bits.
-	nbits := (st.Modulus().BitLen()+3)/4 + 2
+	// u_i, v_i < 1.2534·r^(1/4), the LLL δ=0.99 bound on the rank-4 lattice of
+	// determinant r reduced by rationalReconstructExtG2; fits in
+	// (BitLen+3)/4 + 1 bits. Not the Hermite constant — see the derivation on
+	// [sw_emulated.Curve.scalarMulGLVAndFakeGLV].
+	nbits := (st.Modulus().BitLen()+3)/4 + 1
 
 	// handle 0-scalar and (-1)-scalar cases
 	var isScalarZero, isScalarZeroOrMinusOne, isScalarOne, isScalarMinusOne frontend.Variable
@@ -775,6 +915,13 @@ func (g2 *G2) scalarMulGLVAndFakeGLV(Q *G2Affine, s *Scalar, opts ...algopts.Alg
 		_Q = g2.Select(isInputPointAtInfinity, dummyQ, Q)
 		R = g2.Select(isScalarOne, dummyR, R)
 	}
+
+	// NOTE: the returned point is NOT bound into the prime-order subgroup. On this
+	// cofactor curve the accumulator below only pins it modulo the v-torsion, so a
+	// torsion-shifted output satisfies the identity. Callers that expose the result
+	// must bind it with [G2.assertPointInSubgroup]; the public entry points
+	// ([G2.ScalarMul], [G2.MultiScalarMul]) do so — once per aggregate output, not
+	// per summand.
 
 	addFn := g2.add
 	if !cfg.IncompleteArithmetic {
@@ -959,10 +1106,30 @@ func (g2 *G2) MultiScalarMul(p []*G2Affine, s []*Scalar, opts ...algopts.Algebra
 			return nil, fmt.Errorf("mismatching points and scalars slice lengths")
 		}
 		n := len(p)
-		res := g2.ScalarMul(p[0], s[0], opts...)
-		for i := 1; i < n; i++ {
-			q := g2.ScalarMul(p[i], s[i], opts...)
-			res = addFn(res, q)
+		// Deferred subgroup binding: fold constant prime-order points through the
+		// comb (computed, already in-subgroup) and the variable points through the
+		// UNBOUND fake-GLV, then bind the aggregate ONCE (n subgroup checks → 1).
+		// Sound because each fake-GLV summand's accumulator forces its subgroup part
+		// exactly, so binding the sum forces the net torsion to O; the comb summands
+		// contribute no torsion.
+		var res *G2Affine
+		hasVar := false
+		for i := 0; i < n; i++ {
+			var q *G2Affine
+			if d, ok := g2.g2CombTryConst(p[i]); ok {
+				q = g2.scalarMulComb(d, s[i])
+			} else {
+				q = g2.scalarMulGLVAndFakeGLV(p[i], s[i], opts...)
+				hasVar = true
+			}
+			if res == nil {
+				res = q
+			} else {
+				res = addFn(res, q)
+			}
+		}
+		if hasVar {
+			g2.assertPointInSubgroup(res)
 		}
 		return res, nil
 	} else {

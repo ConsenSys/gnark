@@ -14,6 +14,9 @@ type (
 	// GkrClaimGroup represents a set of wires sharing identical claim sources.
 	// finalEvalProof index = pos(wire, srcLevel) * NbOutgoingEvalPoints(srcLevel) + ClaimSources[claimI].OutgoingClaimIndex,
 	// where pos(wire, srcLevel) is the wire's position in srcLevel's UniqueGateInputs list.
+	// ClaimSources are ordered by decreasing Level, and by increasing OutgoingClaimIndex within a
+	// level, so a source at the initial challenge comes first. Hand-written schedules must follow
+	// this order.
 	GkrClaimGroup struct {
 		Wires        []int            `json:"wires"`
 		ClaimSources []GkrClaimSource `json:"claimSources"`
@@ -80,14 +83,12 @@ func (l *GkrSingleSourceZeroCheckLevel) ClaimGroups() []GkrClaimGroup {
 }
 func (l *GkrSingleSourceZeroCheckLevel) FinalEvalProofIndex(wireI, _ int) int { return wireI }
 
-// BindGkrFinalEvalProof binds the non-input-wire entries of finalEvalProof into the transcript.
-// Input-wire evaluations are fully determined by the public assignment (and by evaluation points
-// already committed to the transcript), so hashing them contributes nothing to Fiat-Shamir security.
-// uniqueGateInputs is the deduplicated list of gate-input wire indices for the level in the same
-// order as the finalEvalProof entries (i.e. the order returned by UniqueGateInputs).
-func BindGkrFinalEvalProof[F any](transcript interface{ Bind(...F) }, finalEvalProof []F, uniqueGateInputs []int, isInput func(wireI int) bool, level GkrProvingLevel) {
+// BindGkrFinalEvalProof binds the entries of finalEvalProof belonging to the unique gate inputs
+// bind selects. A claimed value returned to the caller unconsolidated is checked directly against
+// the assignment (see Claims.Check), never reduced by a further level, so it is not bound.
+func BindGkrFinalEvalProof[F any](transcript interface{ Bind(...F) }, finalEvalProof []F, uniqueGateInputs []int, bind func(wireI int) bool, level GkrProvingLevel) {
 	for i, inputWireI := range uniqueGateInputs {
-		if !isInput(inputWireI) {
+		if bind(inputWireI) {
 			transcript.Bind(finalEvalProof[level.FinalEvalProofIndex(i, 0):level.FinalEvalProofIndex(i+1, 0)]...)
 		}
 	}

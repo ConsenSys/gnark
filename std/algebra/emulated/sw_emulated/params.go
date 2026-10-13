@@ -26,6 +26,42 @@ type CurveParams struct {
 	Gm           [][2]*big.Int // m*base point coords
 	Eigenvalue   *big.Int      // endomorphism eigenvalue
 	ThirdRootOne *big.Int      // endomorphism image scaler
+
+	// CofactorClearing is the constant c used to bind the hinted output of the
+	// fake-GLV / GLV+fake-GLV scalar multiplications into the prime-order
+	// subgroup, via a preimage check [c]S == R.
+	//
+	// Soundness requires [c]E(Fp) ⊆ G1, i.e. c must be divisible by the
+	// *exponent* of the cofactor torsion subgroup. Completeness requires
+	// gcd(c, r) = 1 so that [c] stays a bijection on G1. Clearing every
+	// cofactor prime-power ℓ^k ∥ h is sufficient but usually not necessary:
+	// when the torsion has rank > 1 the exponent is strictly smaller than h,
+	// and the smaller constant is what should be used (see BLS12-381 G1, where
+	// the exponent is (x-1) and h = (x-1)²/3).
+	//
+	// For prime-order groups (cofactor 1) it is nil and the check is skipped;
+	// such curves must set [CurveParams.PrimeOrder] to say so explicitly.
+	CofactorClearing *big.Int
+
+	// PrimeOrder records that #E(Fp) = r, i.e. the curve has cofactor 1 and
+	// every on-curve point already lies in the prime-order subgroup. It is the
+	// only thing that licenses [Curve.AssertIsInSubgroup] to be a no-op.
+	//
+	// It must NOT be set for a curve with a nontrivial cofactor. Such a curve
+	// needs either a [CurveParams.CofactorClearing] constant, or it has no
+	// supported membership check at all — in which case
+	// [Curve.AssertIsInSubgroup] panics rather than silently accepting
+	// off-subgroup points. The zero value therefore fails closed: a newly added
+	// cofactor curve is rejected until its membership check is supplied.
+	PrimeOrder bool
+
+	// PreferClassicGLV routes [Curve.ScalarMul] through classic GLV instead of
+	// GLV+fake-GLV. It is set for cofactor curves where the fake-GLV
+	// subgroup-clearing ([CofactorClearing]) costs more than the r^(1/4) loop
+	// saves — measured on BLS12-381 G1 (classic GLV ≈ 105k vs GLV+fake-GLV+clearing
+	// ≈ 116k R1CS). Classic GLV is also inherently sound (computed output, no
+	// hinted off-subgroup point), so no clearing is needed on this path.
+	PreferClassicGLV bool
 }
 
 // GetSecp256k1Params returns curve parameters for the curve secp256k1. When
@@ -43,6 +79,7 @@ func GetSecp256k1Params() CurveParams {
 		Gm:           computeSecp256k1Table(),
 		Eigenvalue:   lambda,
 		ThirdRootOne: omega,
+		PrimeOrder:   true, // h = 1 (SEC 2 §2.4.1)
 	}
 }
 
@@ -61,6 +98,7 @@ func GetBN254Params() CurveParams {
 		Gm:           computeBN254Table(),
 		Eigenvalue:   lambda,
 		ThirdRootOne: omega,
+		PrimeOrder:   true, // BN curves have h = 1 on G1
 	}
 }
 
@@ -79,6 +117,35 @@ func GetBLS12381Params() CurveParams {
 		Gm:           computeBLS12381Table(),
 		Eigenvalue:   lambda,
 		ThirdRootOne: omega,
+		// c = |x-1| = 0xd201000000010001 (64 bits), NOT the full cofactor
+		// h = (x-1)²/3 = 3·11²·10177²·859267²·52437899² (126 bits).
+		//
+		// Write n = (x-1)/3 = 11·10177·859267·52437899, so that
+		//
+		//	h = 3n²  and  x-1 = 3n,  with 3 ∤ n.
+		//
+		// El Housni-Guillevic (eprint 2021/1359 §3.2, Cor. 1) prove for every
+		// BLS curve that the *full* n-torsion is rational, E[n] ⊂ E(Fp): there
+		// are n² points of order n and none of order n². So the n-part of the
+		// cofactor torsion is Z_n × Z_n — rank 2, exponent n rather than n².
+		// The remaining lone factor 3 of h is exactly the 3 in 3n = x-1, and it
+		// contributes a *cyclic* Z_3; it is not squared in h and no rank-2 claim
+		// is made about it. The cofactor torsion is therefore Z_n × Z_{3n} of
+		// order 3n² = h and exponent lcm(n, 3n) = 3n = x-1. Equivalently
+		// E(Fp) ≅ Z_{(x-1)/3} × Z_{(x-1)·r} (Wahby-Boneh, eprint 2019/403 §5).
+		//
+		// Multiplying by the exponent kills the torsion, so [x-1]E(Fp) = G1
+		// exactly — which is what the binding needs: a torsion-tainted R has no
+		// on-curve preimage under [x-1]. Completeness holds because
+		// gcd(x-1, r) = 1 makes [x-1] a bijection on G1, so an honest R keeps a
+		// preimage (take it in G1).
+		//
+		// This is the same constant gnark-crypto's G1 ClearCofactor uses.
+		// Halving the bit length halves the binding ladder: 178k -> 80k R1CS.
+		CofactorClearing: new(big.Int).SetUint64(0xd201000000010001),
+		// classic GLV is cheaper here than GLV+fake-GLV once the (expensive)
+		// cofactor clearing is included — see benchmarks.
+		PreferClassicGLV: true,
 	}
 }
 
@@ -96,6 +163,7 @@ func GetP256Params() CurveParams {
 		Gm:           computeP256Table(),
 		Eigenvalue:   nil,
 		ThirdRootOne: nil,
+		PrimeOrder:   true, // h = 1 (FIPS 186-4 D.1.2.3)
 	}
 }
 
@@ -113,6 +181,7 @@ func GetP384Params() CurveParams {
 		Gm:           computeP384Table(),
 		Eigenvalue:   nil,
 		ThirdRootOne: nil,
+		PrimeOrder:   true, // h = 1 (FIPS 186-4 D.1.2.4)
 	}
 }
 
@@ -131,6 +200,23 @@ func GetBW6761Params() CurveParams {
 		Gm:           computeBW6761Table(),
 		Eigenvalue:   lambda,
 		ThirdRootOne: omega,
+		// Routed through classic GLV (PreferClassicGLV below), whose output is
+		// computed rather than hinted and is therefore inherently in-subgroup, so
+		// no cofactor-clearing binding is used on this curve. This also avoids the
+		// pitfall that a *minimal* clearing constant is unsound here: a
+		// chosen-scalar forgery with a rational φ-eigenvector reaches torsion up
+		// to ~r^(1/2) (not ~r^(1/4)), so the reachable factors inside the ~330-bit
+		// cofactor remainder can't be cheaply isolated — only full-cofactor
+		// clearing (expensive) or classic GLV (chosen here) is sound.
+		//
+		// G1 here has a nontrivial cofactor, so PrimeOrder stays false: this is
+		// the one supported curve with neither h = 1 nor a clearing constant,
+		// and [Curve.AssertIsInSubgroup] therefore panics on it rather than
+		// accepting the on-curve, off-subgroup points that exist (e.g. x = 2).
+		// Nothing in this package reaches that path internally — every
+		// assertPointInSubgroup call site is gated on !PreferClassicGLV.
+		CofactorClearing: nil,
+		PreferClassicGLV: true,
 	}
 }
 
@@ -148,6 +234,7 @@ func GetStarkCurveParams() CurveParams {
 		Gm:           computeStarkCurveTable(),
 		Eigenvalue:   nil,
 		ThirdRootOne: nil,
+		PrimeOrder:   true, // h = 1
 	}
 }
 
