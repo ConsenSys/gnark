@@ -162,8 +162,8 @@ func Build(api frontend.API, table Table, queries Table) error {
 				}
 			} else {
 				leftQuotients = make([]frontend.Variable, len(table))
-				// Subtract the randomized table entries from the challenge directly
-				// the constant term terms[0] is then moved to the coefficient slot
+				// fold the row's random linear combination into the denominator
+				// subtraction instead of materializing the intermediate accumulator
 				terms := make([]frontend.Variable, nbRow)
 				for i := range table {
 					for j := range table[i] {
