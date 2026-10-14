@@ -97,11 +97,17 @@ func TestVerifyBellmanProof(t *testing.T) {
 		proofBytes, err := base64.StdEncoding.DecodeString(test.proof)
 		require.NoError(t, err)
 
-		// Pad for an empty Commitments slice (4-byte zero length), then CommitmentPok as the point
-		// at infinity in uncompressed form: top 3 bits 0b010 (BLS12-381's uncompressed-infinity
-		// flag), the rest zero.
-		padding := make([]byte, bls12381.SizeOfG1AffineUncompressed+4)
-		padding[4] = 0b010 << 5
+		// Pad to account for commitment stuff: an empty Commitments slice (a
+		// zero uint32 length) followed by a CommitmentPok set to the point at
+		// infinity.
+		//
+		// The point cannot be all-zero bytes: (0,0) is the in-memory sentinel
+		// for infinity and is not on the curve, so gnark-crypto rejects that
+		// encoding. Infinity is flagged in the metadata bits of the first byte
+		// instead, with the remaining bytes zero.
+		const mUncompressedInfinity byte = 0b010 << 5
+		padding := make([]byte, 4+bls12381.SizeOfG1AffineUncompressed)
+		padding[4] = mUncompressedInfinity
 		proofBytes = append(proofBytes, padding...)
 
 		proof := NewProof(ecc.BLS12_381)
