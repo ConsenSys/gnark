@@ -137,10 +137,10 @@ func NoTestEngine() TestingOption {
 // NoSolidityChecks is a testing option which disables solidity checks,
 // even when the build tags "solccheck" and "release_checks" are set.
 //
-// When the tags are set, solc and abigen must be reachable in the PATH, and
-// network access is needed to fetch go-ethereum for the simulated backend.
+// When the tags are set, solc must be reachable in the PATH, and network
+// access is needed to fetch go-ethereum for abigen and the simulated backend.
 //
-// See package github.com/consensys/gnark/test/solidity for more details.
+// See package github.com/consensys/gnark/test/solcheck for more details.
 func NoSolidityChecks() TestingOption {
 	return func(opt *testingConfig) error {
 		opt.checkSolidity = false

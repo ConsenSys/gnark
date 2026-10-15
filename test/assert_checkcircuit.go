@@ -32,7 +32,7 @@ import (
 //   - the circuit can be solved with the constraint system solver
 //   - the circuit can be solved with the prover
 //   - the circuit can be verified with the verifier
-//   - the circuit can be verified with the exported Solidity verifier (see package test/solidity)
+//   - the circuit can be verified with the exported Solidity verifier (see package test/solcheck)
 //   - the circuit, witness, proving and verifying keys can be serialized and deserialized
 func (assert *Assert) CheckCircuit(circuit frontend.Circuit, opts ...TestingOption) {
 	// get the testing configuration

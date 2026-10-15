@@ -1,40 +1,54 @@
-// Package solidity checks gnark-exported Solidity verifiers end-to-end.
+// Package solcheck checks gnark-exported Solidity verifiers end-to-end.
 //
 // [Generate] compiles the contract with solc and generates Go bindings with
 // abigen. [Verify] then generates a throwaway Go program that deploys the
 // contract on a geth simulated backend and verifies a proof against it.
 //
-// Requirements (must be reachable in PATH):
-//   - solc (https://docs.soliditylang.org/en/latest/installing-solidity.html)
-//   - abigen (go install github.com/ethereum/go-ethereum/cmd/abigen@v1.16.8)
+// solc must be reachable in PATH, see
+// https://docs.soliditylang.org/en/latest/installing-solidity.html.
+// abigen is run with `go run` at [GoEthereumVersion], so that the bindings
+// match the go-ethereum version used by the generated program.
 //
 // The generated program lives in its own Go module, so go-ethereum is not a
-// dependency of gnark; it is fetched by `go mod tidy` when running [Verify].
-package solidity
+// dependency of gnark. Network access (or a populated module cache) is needed
+// to fetch it.
+package solcheck
 
 import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"go/version"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
 )
 
+// GoEthereumVersion is the go-ethereum version used for abigen and for the
+// simulated backend.
+const GoEthereumVersion = "v1.17.8"
+
 const (
+	abigenPkg   = "github.com/ethereum/go-ethereum/cmd/abigen@" + GoEthereumVersion
 	bindingFile = "gnark_solidity.go"
 	// frBytes is the size of a scalar field element for all supported curves.
 	frBytes = 32
 )
 
-var (
-	groth16Main = template.Must(template.New("groth16").Parse(tmplGroth16))
-	plonkMain   = template.Must(template.New("plonk").Parse(tmplPlonK))
-)
+var mainTemplate = template.Must(template.New("main").Parse(tmplMain))
+
+// abigenWarmup builds abigen once per process, so that concurrent callers of
+// [Generate] hit the build cache instead of all compiling go-ethereum.
+var abigenWarmup = sync.OnceValue(func() error {
+	return run(exec.Command("go", "run", abigenPkg, "--version"))
+})
 
 // Generate compiles dir/solidityFile with solc and generates the Go bindings
 // of the resulting contracts with abigen. All outputs are written to dir.
@@ -46,7 +60,10 @@ func Generate(dir, solidityFile string) error {
 	if err := run(exec.Command("solc", "--evm-version", "cancun", "--combined-json", "abi,bin", solPath, "-o", dir, "--overwrite")); err != nil {
 		return err
 	}
-	return run(exec.Command("abigen", "--combined-json", filepath.Join(dir, "combined.json"), "--pkg", "main", "--out", filepath.Join(dir, bindingFile)))
+	if err := abigenWarmup(); err != nil {
+		return err
+	}
+	return run(exec.Command("go", "run", abigenPkg, "--v2", "--combined-json", filepath.Join(dir, "combined.json"), "--pkg", "main", "--out", filepath.Join(dir, bindingFile)))
 }
 
 // Proof is a proof together with the data needed to verify it on chain.
@@ -79,12 +96,12 @@ func Verify(dir string, p Proof) error {
 		return fmt.Errorf("unsupported curve %s", p.Curve)
 	}
 
-	var tmpl *template.Template
+	var contract string
 	switch p.Backend {
 	case backend.GROTH16:
-		tmpl = groth16Main
+		contract = "Verifier"
 	case backend.PLONK:
-		tmpl = plonkMain
+		contract = "PlonkVerifier"
 	default:
 		return fmt.Errorf("unsupported backend %s", p.Backend)
 	}
@@ -99,17 +116,21 @@ func Verify(dir string, p Proof) error {
 		NbPublicInputs int
 		NbCommitments  int
 		Curve          string
+		Backend        string
+		Contract       string
 	}{
 		Proof:          hex.EncodeToString(p.Proof),
 		PublicInputs:   hex.EncodeToString(p.PublicInputs),
 		NbPublicInputs: len(p.PublicInputs) / frBytes,
 		NbCommitments:  p.NbCommitments,
 		Curve:          curve,
+		Backend:        p.Backend.String(),
+		Contract:       contract,
 	}
-	if err := executeTemplate(tmpl, filepath.Join(dir, "main.go"), data); err != nil {
+	if err := executeTemplate(filepath.Join(dir, "main.go"), data); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(tmplGoMod), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), goMod(), 0o600); err != nil {
 		return err
 	}
 
@@ -118,17 +139,31 @@ func Verify(dir string, p Proof) error {
 	if err := run(tidy); err != nil {
 		return err
 	}
-	goRun := exec.Command("go", "run", "main.go", bindingFile)
+	goRun := exec.Command("go", "run", ".")
 	goRun.Dir = dir
 	return run(goRun)
 }
 
-func executeTemplate(tmpl *template.Template, path string, data any) error {
+// goMod returns the go.mod of the generated program. Its go directive is the
+// language version of the running toolchain, which `go test` also puts first
+// in PATH for the go commands run here.
+func goMod() []byte {
+	var b strings.Builder
+	b.WriteString("module solcheck\n\n")
+	if lang := version.Lang(runtime.Version()); lang != "" {
+		// development toolchains have no valid version; let go mod tidy pick one
+		fmt.Fprintf(&b, "go %s\n\n", strings.TrimPrefix(lang, "go"))
+	}
+	fmt.Fprintf(&b, "require github.com/ethereum/go-ethereum %s\n", GoEthereumVersion)
+	return []byte(b.String())
+}
+
+func executeTemplate(path string, data any) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	if err := tmpl.Execute(f, data); err != nil {
+	if err := mainTemplate.Execute(f, data); err != nil {
 		f.Close()
 		return err
 	}
