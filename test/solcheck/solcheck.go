@@ -63,7 +63,7 @@ func Generate(dir, solidityFile string) error {
 	if err := abigenWarmup(); err != nil {
 		return err
 	}
-	return run(exec.Command("go", "run", abigenPkg, "--v2", "--combined-json", filepath.Join(dir, "combined.json"), "--pkg", "main", "--out", filepath.Join(dir, bindingFile)))
+	return run(exec.Command("go", "run", abigenPkg, "--v2", "--combined-json", filepath.Join(dir, "combined.json"), "--pkg", "main", "--out", filepath.Join(dir, bindingFile))) //#nosec G204 -- fixed binary and flags; only the output dir is caller-controlled
 }
 
 // Proof is a proof together with the data needed to verify it on chain.
