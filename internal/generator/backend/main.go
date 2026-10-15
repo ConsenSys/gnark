@@ -260,14 +260,14 @@ func main() {
 			GenerateTestVectors: true,
 		}
 		assertNoError(generateGkrBackend(cfg))
-
-		fmt.Println("generating test vectors for gkr and sumcheck")
-		testVectorsDir := filepath.Join("..", "..", "gkr", "test_vectors")
-		runCmdInDir(testVectorsDir, "go", "run", ".")
 		wg.Done()
 	}()
 
 	wg.Wait()
+
+	fmt.Println("generating test vectors for gkr and sumcheck")
+	testVectorsDir := filepath.Join("..", "..", "gkr", "test_vectors")
+	runCmdInDir(testVectorsDir, "go", "run", ".")
 
 	// run gofmt on whole directory
 	runCmd("gofmt", "-w", "../../../")
