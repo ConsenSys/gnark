@@ -22,14 +22,10 @@ require (
 )
 
 require (
-	github.com/consensys/gnark-solidity-checker v0.2.0 // indirect
-	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/asmfmt v1.3.2 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
-	github.com/spf13/cobra v1.10.2 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/mod v0.41.0 // indirect
@@ -40,7 +36,6 @@ require (
 )
 
 tool (
-	github.com/consensys/gnark-solidity-checker
 	github.com/klauspost/asmfmt/cmd/asmfmt
 	golang.org/x/tools/cmd/goimports
 )
