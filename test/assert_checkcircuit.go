@@ -32,7 +32,7 @@ import (
 //   - the circuit can be solved with the constraint system solver
 //   - the circuit can be solved with the prover
 //   - the circuit can be verified with the verifier
-//   - the circuit can be verified with gnark-solidity-checker
+//   - the circuit can be verified with the exported Solidity verifier (see package test/solcheck)
 //   - the circuit, witness, proving and verifying keys can be serialized and deserialized
 func (assert *Assert) CheckCircuit(circuit frontend.Circuit, opts ...TestingOption) {
 	// get the testing configuration
@@ -135,7 +135,7 @@ func (assert *Assert) CheckCircuit(circuit frontend.Circuit, opts ...TestingOpti
 										Msg("skipping solidity check, too many commitments")
 								}
 								checkSolidity = checkSolidity && (len(ccs.GetCommitments().CommitmentIndexes()) <= 1)
-								// set the default hash function in case of	custom hash function not set. This is to ensure that the proof can be verified by gnark-solidity-checker
+								// set the default hash function in case of	custom hash function not set. This is to ensure that the proof can be verified by the Solidity verifier
 								proverOpts = append([]backend.ProverOption{solidity.WithProverTargetSolidityVerifier(b)}, opt.proverOpts...)
 								verifierOpts = append([]backend.VerifierOption{solidity.WithVerifierTargetSolidityVerifier(b)}, opt.verifierOpts...)
 							}
@@ -146,7 +146,7 @@ func (assert *Assert) CheckCircuit(circuit frontend.Circuit, opts ...TestingOpti
 							assert.noError(curve.ScalarField(), err, &w)
 
 							if checkSolidity {
-								// check that the proof can be verified by gnark-solidity-checker
+								// check that the proof can be verified by the exported Solidity verifier
 								if _vk, ok := vk.(solidity.VerifyingKey); ok {
 									assert.Run(func(assert *Assert) {
 										assert.solidityVerification(b, curve, _vk, proof, w.public, opt.solidityOpts)
