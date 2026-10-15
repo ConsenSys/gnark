@@ -8,8 +8,10 @@ const tmplMain = `package main
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -40,6 +42,9 @@ func main() {
 	sim.Commit()
 	_, err = bind.WaitDeployed(context.Background(), client, tx.Hash())
 	checkErr(err, "wait for verifier contract deployment")
+	receipt, err := client.TransactionReceipt(context.Background(), tx.Hash())
+	checkErr(err, "fetching deployment receipt")
+	fmt.Printf("gas used: deploy=%d\n", receipt.GasUsed)
 	verifier := New{{ .Contract }}()
 	instance := verifier.Instance(client, addr)
 
@@ -55,28 +60,44 @@ func main() {
 	}
 {{ if eq .Backend "groth16" }}
 	// verifyProof takes the raw MarshalSolidity() output and reverts on invalid proofs
-	_, err = instance.CallRaw(nil, verifier.PackVerifyProof(proofBytes, input))
+	calldata := verifier.PackVerifyProof(proofBytes, input)
+	_, err = instance.CallRaw(nil, calldata)
 	checkErr(err, "calling verifier on chain")
+	fmt.Printf("gas used: verifyProof=%d (estimate)\n", estimateGas(client, addr, calldata))
 {{- if eq .Curve "bn254" }}
 
 	// compress proof (only available for BN254)
-	compressed, err := bind.Call(instance, nil, verifier.PackCompressProof(proofBytes), verifier.UnpackCompressProof)
+	calldata = verifier.PackCompressProof(proofBytes)
+	compressed, err := bind.Call(instance, nil, calldata, verifier.UnpackCompressProof)
 	checkErr(err, "compressing proof")
+	fmt.Printf("gas used: compressProof=%d (estimate)\n", estimateGas(client, addr, calldata))
 {{- if eq .NbCommitments 0 }}
-	_, err = instance.CallRaw(nil, verifier.PackVerifyCompressedProof(compressed, input))
+	calldata = verifier.PackVerifyCompressedProof(compressed, input)
 {{- else }}
-	_, err = instance.CallRaw(nil, verifier.PackVerifyCompressedProof(compressed.Compressed, compressed.CompressedCommitments, compressed.CompressedCommitmentPok, input))
+	calldata = verifier.PackVerifyCompressedProof(compressed.Compressed, compressed.CompressedCommitments, compressed.CompressedCommitmentPok, input)
 {{- end }}
+	_, err = instance.CallRaw(nil, calldata)
 	checkErr(err, "calling verifier with compressed proof on chain")
+	fmt.Printf("gas used: verifyCompressedProof=%d (estimate)\n", estimateGas(client, addr, calldata))
 {{- end }}
 {{- else }}
 	// Verify returns false on invalid proofs
-	valid, err := bind.Call(instance, nil, verifier.PackVerify(proofBytes, input[:]), verifier.UnpackVerify)
+	calldata := verifier.PackVerify(proofBytes, input[:])
+	valid, err := bind.Call(instance, nil, calldata, verifier.UnpackVerify)
 	checkErr(err, "calling verifier on chain")
 	if !valid {
 		panic("proof is invalid")
 	}
+	fmt.Printf("gas used: verify=%d (estimate)\n", estimateGas(client, addr, calldata))
 {{- end }}
+}
+
+// estimateGas returns the estimate of the gas a call with calldata to addr
+// would consume.
+func estimateGas(client simulated.Client, addr common.Address, calldata []byte) uint64 {
+	gas, err := client.EstimateGas(context.Background(), ethereum.CallMsg{To: &addr, Data: calldata})
+	checkErr(err, "estimating gas")
+	return gas
 }
 
 func checkErr(err error, ctx string) {

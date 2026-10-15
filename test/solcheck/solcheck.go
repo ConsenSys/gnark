@@ -15,6 +15,7 @@
 package solcheck
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -80,7 +81,8 @@ type Proof struct {
 
 // Verify deploys the contract previously processed by [Generate] in dir on a
 // geth simulated backend and verifies p with it. It returns an error if the
-// proof is rejected.
+// proof is rejected. The gas consumed by the deployment and the verification
+// calls is printed to stdout.
 func Verify(dir string, p Proof) error {
 	if _, err := os.Stat(filepath.Join(dir, bindingFile)); err != nil {
 		return fmt.Errorf("go bindings (run Generate first): %w", err)
@@ -141,7 +143,13 @@ func Verify(dir string, p Proof) error {
 	}
 	goRun := exec.Command("go", "run", ".")
 	goRun.Dir = dir
-	return run(goRun)
+	goRun.Stdout = os.Stdout // stream the gas reports of the generated program
+	var stderr bytes.Buffer
+	goRun.Stderr = &stderr
+	if err := goRun.Run(); err != nil {
+		return fmt.Errorf("%s: %w\n%s", goRun, err, &stderr)
+	}
+	return nil
 }
 
 // goMod returns the go.mod of the generated program. Its go directive is the
