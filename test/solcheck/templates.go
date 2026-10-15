@@ -21,7 +21,6 @@ const (
 	proofHex       = "{{ .Proof }}"
 	inputHex       = "{{ .PublicInputs }}"
 	nbPublicInputs = {{ .NbPublicInputs }}
-	gasLimit       = 4712388
 )
 
 func main() {
@@ -31,7 +30,7 @@ func main() {
 	auth := bind.NewKeyedTransactor(key, big.NewInt(1337))
 	sim := simulated.NewBackend(types.GenesisAlloc{
 		auth.From: {Balance: big.NewInt(1000000000000000000)}, // 1 Eth
-	}, simulated.WithBlockGasLimit(gasLimit))
+	})
 	defer sim.Close()
 	client := sim.Client()
 
