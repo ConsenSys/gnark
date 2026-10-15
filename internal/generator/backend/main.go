@@ -50,6 +50,7 @@ func main() {
 	tiny_field := templateData{
 		RootPath:          "../../../internal/smallfields/tinyfield/",
 		CSPath:            "../../../constraint/tinyfield",
+		SmallField:        true,
 		Curve:             "tinyfield",
 		CurveID:           "UNKNOWN",
 		noBackend:         true,
@@ -59,6 +60,7 @@ func main() {
 	}
 	baby_bear_field := templateData{
 		CSPath:      "../../../constraint/babybear/",
+		SmallField:  true,
 		Curve:       "babybear",
 		CurveID:     "UNKNOWN",
 		OnlyField:   true,
@@ -68,12 +70,26 @@ func main() {
 	}
 	koala_bear_field := templateData{
 		CSPath:      "../../../constraint/koalabear/",
+		SmallField:  true,
 		Curve:       "koalabear",
 		CurveID:     "UNKNOWN",
 		OnlyField:   true,
 		noBackend:   true,
 		NoGKR:       true,
 		ElementType: "U32",
+	}
+	// mamabear is 49 bits, so unlike the 31-bit babybear and koalabear it does
+	// not fit U32. It still fits a single machine word, so it uses U64W1 rather
+	// than the six-limb U64 the curve scalar fields need.
+	mama_bear_field := templateData{
+		CSPath:      "../../../constraint/mamabear/",
+		SmallField:  true,
+		Curve:       "mamabear",
+		CurveID:     "UNKNOWN",
+		OnlyField:   true,
+		noBackend:   true,
+		NoGKR:       true,
+		ElementType: "U64W1",
 	}
 	grumpkin := templateData{
 		CSPath:      "../../../constraint/grumpkin/",
@@ -93,6 +109,7 @@ func main() {
 		tiny_field,
 		baby_bear_field,
 		koala_bear_field,
+		mama_bear_field,
 		grumpkin,
 	}
 
@@ -243,14 +260,14 @@ func main() {
 			GenerateTestVectors: true,
 		}
 		assertNoError(generateGkrBackend(cfg))
-
-		fmt.Println("generating test vectors for gkr and sumcheck")
-		testVectorsDir := filepath.Join("..", "..", "gkr", "test_vectors")
-		runCmdInDir(testVectorsDir, "go", "run", ".")
 		wg.Done()
 	}()
 
 	wg.Wait()
+
+	fmt.Println("generating test vectors for gkr and sumcheck")
+	testVectorsDir := filepath.Join("..", "..", "gkr", "test_vectors")
+	runCmdInDir(testVectorsDir, "go", "run", ".")
 
 	// run gofmt on whole directory
 	runCmd("gofmt", "-w", "../../../")
@@ -295,6 +312,20 @@ type templateData struct {
 	NoGKR             bool
 	NoTests           bool
 	ElementType       string
+	// SmallField marks a field that is not the scalar field of a curve.
+	// It is independent of ElementType: mamabear is a small field stored
+	// in a uint64 word, so the two must not be conflated.
+	SmallField bool
+}
+
+// ElementWordBits is the limb width of ElementType, 32 or 64. Templates branch
+// on it rather than on ElementType, which also encodes the number of limbs:
+// U64W1 and U64 differ in limb count but are both 64 bits wide.
+func (d templateData) ElementWordBits() int {
+	if d.ElementType == "U32" {
+		return 32
+	}
+	return 64
 }
 
 func generateGkrBackend(cfg gkrConfig) error {

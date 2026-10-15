@@ -70,6 +70,14 @@ func New(api frontend.API) Table {
 		t.bID = api.Compiler().AddBlueprint(&t.blueprint)
 		return t
 	}
+	if constraint.FitsElement[constraint.U64W1](api.Compiler().Field()) {
+		t := &table[constraint.U64W1]{api: api}
+		api.Compiler().Defer(t.commit)
+
+		// each table has a unique blueprint
+		t.bID = api.Compiler().AddBlueprint(&t.blueprint)
+		return t
+	}
 	if constraint.FitsElement[constraint.U64](api.Compiler().Field()) {
 		t := &table[constraint.U64]{api: api}
 		api.Compiler().Defer(t.commit)
