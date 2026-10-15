@@ -375,7 +375,7 @@ func TestECRecoverNonCanonicalSqrtRoot(t *testing.T) {
 	cubeRootExp := new(big.Int).ModInverse(big.NewInt(3), pm1over3)
 	limit := new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 32), big.NewInt(977))
 	var x, y *big.Int
-	for yi := int64(1); ; yi++ {
+	for yi := int64(1); yi < limit.Int64(); yi++ {
 		y = big.NewInt(yi)
 		c := new(big.Int).Mul(y, y)
 		c.Sub(c, big.NewInt(7)).Mod(c, p)
@@ -392,7 +392,7 @@ func TestECRecoverNonCanonicalSqrtRoot(t *testing.T) {
 		x = xi
 		break
 	}
-	if y.Cmp(limit) >= 0 {
+	if x == nil {
 		t.Fatal("no small-y point found")
 	}
 
