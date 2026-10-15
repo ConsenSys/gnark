@@ -478,7 +478,9 @@ func TestECRecoverNonCanonicalSqrtRoot(t *testing.T) {
 
 	// but claiming the divergent key must be rejected. Before the fix, this
 	// witness was accepted: the flipped parity made the in-circuit
-	// recomputation match the forged key.
+	// recomputation match the forged key. With the fix reverted, the test
+	// instead aborts at the NoError above (the honest witness under the
+	// forged hint stops solving) and never reaches this assertion.
 	err = ccs.IsSolved(wForged,
 		solver.OverrideHint(sqrtID, forgedSqrtHint),
 		solver.OverrideHint(pkID, forgedPKHint))
