@@ -8,7 +8,6 @@ package gkrrational
 import (
 	"encoding/json"
 	"fmt"
-	"hash"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -201,7 +200,7 @@ func unmarshalProof(printable gkrtesting.PrintableProof) (Proof, error) {
 
 type TestCase struct {
 	Circuit         gkrcore.SerializableCircuit
-	Hash            hash.Hash
+	Hash            fieldHasher
 	Proof           Proof
 	FullAssignment  WireAssignment
 	InOutAssignment WireAssignment
@@ -229,7 +228,7 @@ func newTestCase(path string) (*TestCase, error) {
 	}
 
 	circuit, _ := cache.GetCircuit(filepath.Join(dir, info.Circuit))
-	var _hash hash.Hash
+	var _hash fieldHasher
 	if _hash, err = hashFromDescription(info.Hash); err != nil {
 		return nil, err
 	}

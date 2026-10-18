@@ -8,7 +8,6 @@ package gkrrational
 import (
 	"encoding/json"
 	"fmt"
-	"hash"
 	"math/bits"
 	"os"
 	"path/filepath"
@@ -30,7 +29,7 @@ func runMultilin(testCaseInfo *sumcheckTestCaseInfo) error {
 	}
 
 	var (
-		hsh hash.Hash
+		hsh fieldHasher
 		err error
 	)
 

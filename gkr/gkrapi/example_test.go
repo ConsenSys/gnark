@@ -5,8 +5,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
-	_ "github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc" // registers the MiMC hash used below
-	gcHash "github.com/consensys/gnark-crypto/hash"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
 	gkrbn254 "github.com/consensys/gnark/gkr/bn254"
 	"github.com/consensys/gnark/gkr/gkrapi"
 )
@@ -29,9 +28,9 @@ func Example() {
 	assignment[y] = []fr.Element{fr.NewElement(5), fr.NewElement(7)}
 	// assignment[z] is left nil: Prove computes it.
 
-	// Prove and Verify must be given hashes seeded identically with a commitment to the circuit,
+	// Prove and Verify must be given hashers seeded identically with a commitment to the circuit,
 	// the schedule, the number of instances and the inputs and outputs. The example omits it.
-	proof, proverClaims, err := gkrbn254.Prove(circuit, schedule, assignment, gcHash.MIMC_BN254.New())
+	proof, proverClaims, err := gkrbn254.Prove(circuit, schedule, assignment, mimc.NewFieldHasher())
 	assertNoError(err)
 	assertNoError(proverClaims.Check(assignment))
 
@@ -42,7 +41,7 @@ func Example() {
 	deserialized, err := gkrbn254.DeserializeProof(circuit, schedule, flattened)
 	assertNoError(err)
 
-	verifierClaims, err := gkrbn254.Verify(circuit, schedule, 1, deserialized, gcHash.MIMC_BN254.New())
+	verifierClaims, err := gkrbn254.Verify(circuit, schedule, 1, deserialized, mimc.NewFieldHasher())
 	assertNoError(err)
 	assertNoError(verifierClaims.Check(assignment)) // every returned claim must be checked
 

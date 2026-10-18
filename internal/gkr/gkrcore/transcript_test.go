@@ -5,8 +5,8 @@ import (
 
 	"github.com/consensys/gnark-crypto/field/koalabear"
 	"github.com/consensys/gnark-crypto/field/koalabear/extensions"
-	gcHash "github.com/consensys/gnark-crypto/hash"
-	_ "github.com/consensys/gnark-crypto/hash/all" // registers POSEIDON2_KOALABEAR
+	extensionsHash "github.com/consensys/gnark-crypto/field/koalabear/extensions/hash"
+	"github.com/consensys/gnark-crypto/field/koalabear/poseidon2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,7 +24,7 @@ func TestHashTranscriptBindsWholeElement(t *testing.T) {
 	}
 
 	challenge := func(e extensions.E6) extensions.E6 {
-		transcript := NewHashTranscript[extensions.E6](gcHash.POSEIDON2_KOALABEAR.New())
+		transcript := NewHashTranscript[extensions.E6](extensionsHash.NewBaseFieldHashAdapterE6(poseidon2.NewMerkleDamgardHasher()))
 		transcript.Bind(e)
 		return transcript.Challenge()
 	}

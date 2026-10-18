@@ -8,11 +8,11 @@ package gkrbn254
 import (
 	"errors"
 	"fmt"
-	"hash"
 	"iter"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/polynomial"
+	"github.com/consensys/gnark-crypto/hash"
 	"github.com/consensys/gnark-crypto/utils"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/gkr"
@@ -92,7 +92,7 @@ func identityGate() gkrcore.SerializableGate {
 
 // newResources builds the resources shared by Prove and Verify. It takes no assignment and
 // creates no pools; Prove sets those up separately afterward, since Verify needs neither.
-func newResources(c Circuit, schedule constraint.GkrProvingSchedule, nbVars int, hasher hash.Hash) resources {
+func newResources(c Circuit, schedule constraint.GkrProvingSchedule, nbVars int, hasher hash.FieldHasher[fr.Element, fr.Element]) resources {
 	return resources{
 		outgoingEvalPoints: make([][][]fr.Element, len(schedule)+1),
 		nbVars:             nbVars,
@@ -183,7 +183,7 @@ func (r *resources) proveLevel(levelI int) sumcheckProof {
 // inputs and outputs; the caller must check them. The claim values returned to the caller, the
 // output evaluations among them, are not bound into the transcript. hasher must be seeded as
 // Verify requires.
-func Prove(c Circuit, schedule constraint.GkrProvingSchedule, assignment WireAssignment, hasher hash.Hash) (Proof, Claims, error) {
+func Prove(c Circuit, schedule constraint.GkrProvingSchedule, assignment WireAssignment, hasher hash.FieldHasher[fr.Element, fr.Element]) (Proof, Claims, error) {
 	nbInstances := assignment.NumInstances()
 	nbVars := assignment.NumVars()
 	if nbVars == 0 {
@@ -279,9 +279,9 @@ func (r *resources) verifyLevel(levelI int, proof Proof) error {
 // not bound into the transcript.
 //
 // The transcript starts empty, so for soundness the verifier must seed hasher, as the prover did,
-// with a commitment to the circuit, the schedule, the number of instances and the input and output
-// columns, computed from values it trusts.
-func Verify(c Circuit, schedule constraint.GkrProvingSchedule, logNbInstances int, proof Proof, hasher hash.Hash) (Claims, error) {
+// by writing to it a commitment to the circuit, the schedule, the number of instances and the input
+// and output columns, computed from values it trusts.
+func Verify(c Circuit, schedule constraint.GkrProvingSchedule, logNbInstances int, proof Proof, hasher hash.FieldHasher[fr.Element, fr.Element]) (Claims, error) {
 	if logNbInstances < 1 {
 		return nil, errors.New("number of variables must be positive")
 	}

@@ -7,7 +7,6 @@ package gkrbls12377
 
 import (
 	"fmt"
-	"hash"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,8 +17,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
 	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr/polynomial"
-	gcHash "github.com/consensys/gnark-crypto/hash"
-	_ "github.com/consensys/gnark-crypto/hash/all" // registers the hash benchmarkGkrMiMC uses
+	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr/poseidon2"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/gkr"
 	"github.com/consensys/gnark/gkr/gkrapi"
@@ -30,6 +28,11 @@ import (
 )
 
 var cache = gkrtesting.NewCache(gkr.PrimeField(ecc.BLS12_377.ScalarField()))
+
+// newPoseidon2Hasher returns a Poseidon2 hasher over the field's elements.
+func newPoseidon2Hasher() fieldHasher {
+	return poseidon2.NewMerkleDamgardHasher()
+}
 
 func TestNoGateTwoInstances(t *testing.T) {
 	// Testing a single instance is not possible because the sumcheck implementation doesn't cover the trivial 0-variate case
@@ -96,7 +99,7 @@ func TestEndToEndPoseidon2(t *testing.T) {
 	}
 	// The output column is left nil: Prove computes it.
 
-	proof, proverClaims, err := Prove(circuit, schedule, assignment, gcHash.POSEIDON2_BLS12_377.New())
+	proof, proverClaims, err := Prove(circuit, schedule, assignment, newPoseidon2Hasher())
 	require.NoError(t, err)
 
 	var flattened []fr.Element
@@ -109,7 +112,7 @@ func TestEndToEndPoseidon2(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		claims, err := Verify(circuit, schedule, assignment.NumVars(), deserialized, gcHash.POSEIDON2_BLS12_377.New())
+		claims, err := Verify(circuit, schedule, assignment.NumVars(), deserialized, newPoseidon2Hasher())
 		if err != nil {
 			return nil, err
 		}
@@ -405,7 +408,7 @@ func benchmarkGkrMiMC(b *testing.B, nbInstances, mimcDepth int) {
 	//b.ResetTimer()
 	fmt.Println("constructing proof")
 	start = time.Now().UnixMicro()
-	_, _, err = Prove(c, schedule, assignment, gcHash.POSEIDON2_BLS12_377.New())
+	_, _, err = Prove(c, schedule, assignment, newPoseidon2Hasher())
 	proved := time.Now().UnixMicro() - start
 	fmt.Println("proved in", proved, "μs")
 	assert.NoError(b, err)
@@ -577,7 +580,7 @@ func unmarshalProof(printable gkrtesting.PrintableProof) (Proof, error) {
 
 type TestCase struct {
 	Circuit         gkrcore.SerializableCircuit
-	Hash            hash.Hash
+	Hash            fieldHasher
 	Proof           Proof
 	FullAssignment  WireAssignment
 	InOutAssignment WireAssignment
@@ -604,7 +607,7 @@ func newTestCase(path string) (*TestCase, error) {
 	}
 
 	circuit, _ := cache.GetCircuit(filepath.Join(dir, info.Circuit))
-	var _hash hash.Hash
+	var _hash fieldHasher
 	if _hash, err = hashFromDescription(info.Hash); err != nil {
 		return nil, err
 	}

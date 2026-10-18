@@ -7,23 +7,26 @@ package gkrrational
 
 import (
 	"fmt"
-	"hash"
 
+	"github.com/consensys/gnark-crypto/hash"
 	"github.com/consensys/gnark/internal/gkr/gkrtesting"
 	"github.com/consensys/gnark/internal/rational"
 )
+
+// fieldHasher is the hasher the transcript of this field's GKR runs on.
+type fieldHasher = hash.FieldHasher[rational.Element, rational.Element]
 
 // hashFromDescription returns the hash a test vector names. The only type is "const": a
 // messageCounter with step 0, so every challenge equals the given value regardless of what was
 // bound to the transcript. Test vectors therefore pin down the GKR and sumcheck arithmetic only.
 // Transcript handling is exercised by the tests using newMessageCounter with a nonzero step, and
 // end to end by the std/gkrapi tests, which use real hashes.
-func hashFromDescription(d gkrtesting.HashDescription) (hash.Hash, error) {
+func hashFromDescription(d gkrtesting.HashDescription) (fieldHasher, error) {
 	if _type, ok := d["type"]; ok {
 		switch _type {
 		case "const":
 			startState := int64(d["val"].(float64))
-			return &messageCounter{startState: startState, step: 0, state: startState}, nil
+			return &messageCounter{state: startState, step: 0}, nil
 		default:
 			return nil, fmt.Errorf("unknown fake hash type \"%s\"", _type)
 		}
@@ -31,50 +34,31 @@ func hashFromDescription(d gkrtesting.HashDescription) (hash.Hash, error) {
 	return nil, fmt.Errorf("hash description missing type")
 }
 
-// messageCounterBlockSize is the length of an element's Marshal().
-const messageCounterBlockSize = rational.Bytes
-
-// messageCounter is a stand-in hash whose state depends only on the number of field-element
-// blocks written to it, not on their values.
+// messageCounter is a stand-in hasher whose state depends only on the number of field elements
+// written to it, not on their values.
 type messageCounter struct {
-	startState int64
-	state      int64
-	step       int64
+	state int64
+	step  int64
 }
 
-func (m *messageCounter) Write(p []byte) (n int, err error) {
-	inputBlockSize := (len(p)-1)/messageCounterBlockSize + 1
-	m.state += int64(inputBlockSize) * m.step
-	return len(p), nil
+func (m *messageCounter) WriteField(e ...rational.Element) {
+	m.state += int64(len(e)) * m.step
 }
 
-func (m *messageCounter) Sum(b []byte) []byte {
-	inputBlockSize := (len(b)-1)/messageCounterBlockSize + 1
-	resI := m.state + int64(inputBlockSize)*m.step
+func (m *messageCounter) PadBlock() {}
+
+func (m *messageCounter) SumField() rational.Element {
 	var res rational.Element
-	res.SetInt64(int64(resI))
-	return (&res).Marshal()
+	res.SetInt64(m.state + m.step)
+	return res
 }
 
-func (m *messageCounter) Reset() {
-	m.state = m.startState
+func newMessageCounter(startState, step int) fieldHasher {
+	return &messageCounter{state: int64(startState), step: int64(step)}
 }
 
-func (m *messageCounter) Size() int {
-	return messageCounterBlockSize
-}
-
-func (m *messageCounter) BlockSize() int {
-	return messageCounterBlockSize
-}
-
-func newMessageCounter(startState, step int) hash.Hash {
-	transcript := &messageCounter{startState: int64(startState), state: int64(startState), step: int64(step)}
-	return transcript
-}
-
-func newMessageCounterGenerator(startState, step int) func() hash.Hash {
-	return func() hash.Hash {
+func newMessageCounterGenerator(startState, step int) func() fieldHasher {
+	return func() fieldHasher {
 		return newMessageCounter(startState, step)
 	}
 }
