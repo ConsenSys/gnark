@@ -10,9 +10,7 @@ type HashTranscript[E any] struct {
 	bound bool // whether Bind was called since the last Challenge
 }
 
-// NewHashTranscript returns a transcript backed by h. Bind writes the elements with one WriteField call.
-// Challenge writes the zero element if nothing was bound since the last challenge, then returns
-// h.SumField().
+// NewHashTranscript returns a transcript backed by h.
 func NewHashTranscript[E any](h hash.FieldHasher[E, E]) *HashTranscript[E] {
 	return &HashTranscript[E]{h: h}
 }
@@ -36,5 +34,6 @@ func (t *HashTranscript[E]) Challenge(elements ...E) E {
 		t.h.WriteField(zero)
 	}
 	t.bound = false
+	t.h.PadBlock()
 	return t.h.SumField()
 }
