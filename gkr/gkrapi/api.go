@@ -68,7 +68,8 @@ func (api *API) Export(in ...gkr.Variable) {
 	api.circuit.Export(in...)
 }
 
-// Compile compiles the circuit for field, and builds its default proving schedule under mode.
+// Compile compiles the circuit for field, and builds its default proving schedule under mode. The
+// circuit must be proven and verified with the backend for field.
 func (api *API) Compile(field gkr.Field, mode ConsolidationMode) (Circuit, constraint.GkrProvingSchedule, error) {
 	_, circuit, err := api.circuit.Compile(field)
 	if err != nil {
