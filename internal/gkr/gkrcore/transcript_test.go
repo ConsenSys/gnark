@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestHashTranscriptBindsWholeElement checks that every coordinate of a bound extension element
-// affects the next challenge.
+// TestHashTranscriptBindsWholeElement checks that every coordinate of an absorbed extension
+// element affects the next challenge.
 func TestHashTranscriptBindsWholeElement(t *testing.T) {
 	var element extensions.E6
 	element.MustSetRandom()
@@ -25,8 +25,8 @@ func TestHashTranscriptBindsWholeElement(t *testing.T) {
 
 	challenge := func(e extensions.E6) extensions.E6 {
 		transcript := NewHashTranscript[extensions.E6](extensionsHash.NewBaseFieldHashAdapterE6(poseidon2.NewMerkleDamgardHasher()))
-		transcript.Bind(e)
-		return transcript.Challenge()
+		transcript.Absorb(e)
+		return transcript.Squeeze()
 	}
 
 	reference := challenge(element)

@@ -2,12 +2,12 @@ package gkrcore
 
 import "github.com/consensys/gnark-crypto/hash"
 
-// HashTranscript is a Fiat-Shamir transcript backed by a running field hasher. Field elements are
-// written via Bind; challenges are derived via Challenge. The hasher is never reset — all previous
-// data is implicitly part of future challenges.
+// HashTranscript is a Fiat-Shamir transcript backed by a running field hasher. Absorb writes field
+// elements; Squeeze derives challenges from them. The hasher is never reset — all previous data is
+// implicitly part of future challenges.
 type HashTranscript[E any] struct {
-	h     hash.FieldHasher[E, E]
-	bound bool // whether Bind was called since the last Challenge
+	h        hash.FieldHasher[E, E]
+	absorbed bool // whether Absorb was called since the last Squeeze
 }
 
 // NewHashTranscript returns a transcript backed by h.
@@ -15,25 +15,25 @@ func NewHashTranscript[E any](h hash.FieldHasher[E, E]) *HashTranscript[E] {
 	return &HashTranscript[E]{h: h}
 }
 
-// Bind writes field elements to the transcript as bindings for the next challenge.
-func (t *HashTranscript[E]) Bind(elements ...E) {
+// Absorb writes field elements to the transcript, to be part of the next squeeze.
+func (t *HashTranscript[E]) Absorb(elements ...E) {
 	if len(elements) == 0 {
 		return
 	}
 	t.h.WriteField(elements...)
-	t.bound = true
+	t.absorbed = true
 }
 
-// Challenge binds elements as Bind would, then squeezes a challenge from the current hasher state.
-// If no bindings were added since the last challenge, the zero element is written first to advance
+// Squeeze absorbs elements as Absorb would, then derives a challenge from the hasher's state.
+// If nothing was absorbed since the last squeeze, the zero element is written first to advance
 // the state and prevent repeated values.
-func (t *HashTranscript[E]) Challenge(elements ...E) E {
-	t.Bind(elements...)
-	if !t.bound {
+func (t *HashTranscript[E]) Squeeze(elements ...E) E {
+	t.Absorb(elements...)
+	if !t.absorbed {
 		var zero E
 		t.h.WriteField(zero)
 	}
-	t.bound = false
+	t.absorbed = false
 	t.h.PadBlock()
 	return t.h.SumField()
 }

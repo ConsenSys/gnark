@@ -169,7 +169,7 @@ func (r *resources) verifyLevelSetup(levelI int, proof Proof) (frontend.Variable
 
 	foldingCoeff := frontend.Variable(0)
 	if level.NbClaims() >= 2 {
-		foldingCoeff = r.t.getChallenge()
+		foldingCoeff = r.t.Squeeze()
 	}
 
 	var claimedEvals []frontend.Variable
@@ -223,7 +223,7 @@ func (r *resources) verifySingleSourceZeroCheckLevel(levelI int, proof Proof) er
 
 		copy(gPrime[1:], partialSumPoly)
 
-		challenges[j] = r.t.getChallenge(proof[levelI].PartialSumPolys[j]...)
+		challenges[j] = r.t.Squeeze(proof[levelI].PartialSumPolys[j]...)
 		claimedSum = polynomial.InterpolateLDE(r.api, challenges[j], gPrime[:(degree+1)])
 	}
 
@@ -235,11 +235,12 @@ func (r *resources) verifySingleSourceZeroCheckLevel(levelI int, proof Proof) er
 	return lazyClaims.verifyFinalEval(r.api, challenges, claimedSum, proof[levelI].FinalEvalProof)
 }
 
-// levelPredicates returns the bind and include predicates for level levelI's unique gate inputs.
-// Level 0 binds nothing and returns every one of its wires (self-referencing on the consolidation
-// view); every other level binds every unique gate input that is not an unconsolidated circuit
-// input, and returns claims for exactly those it withholds from binding.
-func (r *resources) levelPredicates(levelI int) (bind, include func(wI int) bool) {
+// levelPredicates returns, for level levelI's unique gate inputs, the predicate absorb, which selects
+// those absorbed into the transcript, and the predicate include, which selects those whose claims are
+// returned. Level 0 absorbs nothing and returns every one of its wires (self-referencing on the
+// consolidation view); every other level absorbs every unique gate input that is not an
+// unconsolidated circuit input, and returns claims for exactly those it withholds from absorbing.
+func (r *resources) levelPredicates(levelI int) (absorb, include func(wI int) bool) {
 	if levelI == 0 {
 		return func(int) bool { return false }, func(int) bool { return true }
 	}
@@ -247,7 +248,7 @@ func (r *resources) levelPredicates(levelI int) (bind, include func(wI int) bool
 		func(wI int) bool { return r.circuit.IsInput(wI) && !r.consolidated[wI] }
 }
 
-// verifyLevel verifies level levelI: checks its proof entry, binds its values, and appends its claims.
+// verifyLevel verifies level levelI: checks its proof entry, absorbs its values, and appends its claims.
 func (r *resources) verifyLevel(levelI int, proof Proof) error {
 	switch r.schedule[levelI].(type) {
 	case *constraint.GkrSkipLevel:
@@ -261,8 +262,8 @@ func (r *resources) verifyLevel(levelI int, proof Proof) error {
 			return err
 		}
 	}
-	bind, include := r.levelPredicates(levelI)
-	constraint.BindGkrFinalEvalProof(r.t, proof[levelI].FinalEvalProof, gkrcore.UniqueGateInputs(r.circuit, r.schedule[levelI]), bind, r.schedule[levelI])
+	absorb, include := r.levelPredicates(levelI)
+	constraint.AbsorbGkrFinalEvalProof(r.t, proof[levelI].FinalEvalProof, gkrcore.UniqueGateInputs(r.circuit, r.schedule[levelI]), absorb, r.schedule[levelI])
 	gkrcore.AppendLevelClaims(r.claims, r.circuit, r.schedule[levelI], proof[levelI].FinalEvalProof, r.outgoingEvalPoints[levelI], include)
 	return nil
 }
@@ -319,16 +320,16 @@ func Verify(api frontend.API, c Circuit, schedule constraint.GkrProvingSchedule,
 
 	firstChallenge := make([]frontend.Variable, logNbInstances)
 	for j := range logNbInstances {
-		firstChallenge[j] = r.t.getChallenge()
+		firstChallenge[j] = r.t.Squeeze()
 	}
 	r.outgoingEvalPoints[initialChallengeI] = [][]frontend.Variable{firstChallenge}
-	var boundOutputEvals []frontend.Variable
+	var absorbedOutputEvals []frontend.Variable
 	for i, w := range c.Outputs() {
 		if r.consolidated[w] {
-			boundOutputEvals = append(boundOutputEvals, outputLevel.FinalEvalProof[i])
+			absorbedOutputEvals = append(absorbedOutputEvals, outputLevel.FinalEvalProof[i])
 		}
 	}
-	r.t.Bind(boundOutputEvals...)
+	r.t.Absorb(absorbedOutputEvals...)
 	gkrcore.AppendOutputClaims(r.claims, c, firstChallenge, outputLevel.FinalEvalProof, func(wI int) bool { return !r.consolidated[wI] })
 
 	for levelI := len(schedule) - 1; levelI >= 1; levelI-- {

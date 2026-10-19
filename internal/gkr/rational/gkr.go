@@ -155,11 +155,12 @@ func (r *resources) verifySkipLevel(levelI int, proof Proof) error {
 	return nil
 }
 
-// levelPredicates returns the bind and include predicates for level levelI's unique gate inputs.
-// Level 0 binds nothing and returns every one of its wires (self-referencing on the consolidation
-// view); every other level binds every unique gate input that is not an unconsolidated circuit
-// input, and returns claims for exactly those it withholds from binding.
-func (r *resources) levelPredicates(levelI int) (bind, include func(wI int) bool) {
+// levelPredicates returns, for level levelI's unique gate inputs, the predicate absorb, which selects
+// those absorbed into the transcript, and the predicate include, which selects those whose claims are
+// returned. Level 0 absorbs nothing and returns every one of its wires (self-referencing on the
+// consolidation view); every other level absorbs every unique gate input that is not an
+// unconsolidated circuit input, and returns claims for exactly those it withholds from absorbing.
+func (r *resources) levelPredicates(levelI int) (absorb, include func(wI int) bool) {
 	if levelI == 0 {
 		return func(int) bool { return false }, func(int) bool { return true }
 	}
@@ -167,7 +168,7 @@ func (r *resources) levelPredicates(levelI int) (bind, include func(wI int) bool
 		func(wI int) bool { return r.circuit.IsInput(wI) && !r.consolidated[wI] }
 }
 
-// proveLevel proves level levelI: computes its proof entry, binds its values, and appends its claims.
+// proveLevel proves level levelI: computes its proof entry, absorbs its values, and appends its claims.
 func (r *resources) proveLevel(levelI int) sumcheckProof {
 	var entry sumcheckProof
 	switch r.schedule[levelI].(type) {
@@ -180,8 +181,8 @@ func (r *resources) proveLevel(levelI int) sumcheckProof {
 	default:
 		panic(fmt.Sprintf("level %d: unknown proving level type %T", levelI, r.schedule[levelI]))
 	}
-	bind, include := r.levelPredicates(levelI)
-	constraint.BindGkrFinalEvalProof(r.transcript, entry.finalEvalProof, gkrcore.UniqueGateInputs(r.circuit, r.schedule[levelI]), bind, r.schedule[levelI])
+	absorb, include := r.levelPredicates(levelI)
+	constraint.AbsorbGkrFinalEvalProof(r.transcript, entry.finalEvalProof, gkrcore.UniqueGateInputs(r.circuit, r.schedule[levelI]), absorb, r.schedule[levelI])
 	gkrcore.AppendLevelClaims(r.claims, r.circuit, r.schedule[levelI], entry.finalEvalProof, r.outgoingEvalPoints[levelI], include)
 	return entry
 }
@@ -228,7 +229,7 @@ func Prove(c Circuit, schedule constraint.GkrProvingSchedule, assignment WireAss
 	// Derive the initial challenge point
 	firstChallenge := make([]rational.Element, r.nbVars)
 	for j := range r.nbVars {
-		firstChallenge[j] = r.transcript.Challenge()
+		firstChallenge[j] = r.transcript.Squeeze()
 	}
 	r.outgoingEvalPoints[len(schedule)] = [][]rational.Element{firstChallenge}
 
@@ -238,13 +239,13 @@ func Prove(c Circuit, schedule constraint.GkrProvingSchedule, assignment WireAss
 		outputEvals[i] = r.assignment[w].Evaluate(firstChallenge, &r.memPool)
 	}
 	proof[len(schedule)] = sumcheckProof{finalEvalProof: outputEvals}
-	var boundOutputEvals []rational.Element
+	var absorbedOutputEvals []rational.Element
 	for i, w := range outputs {
 		if r.consolidated[w] {
-			boundOutputEvals = append(boundOutputEvals, outputEvals[i])
+			absorbedOutputEvals = append(absorbedOutputEvals, outputEvals[i])
 		}
 	}
-	r.transcript.Bind(boundOutputEvals...)
+	r.transcript.Absorb(absorbedOutputEvals...)
 	gkrcore.AppendOutputClaims(r.claims, c, firstChallenge, outputEvals, func(wI int) bool { return !r.consolidated[wI] })
 
 	for levelI := len(schedule) - 1; levelI >= 1; levelI-- {
@@ -256,7 +257,7 @@ func Prove(c Circuit, schedule constraint.GkrProvingSchedule, assignment WireAss
 	return proof, r.claims, nil
 }
 
-// verifyLevel verifies level levelI: checks its proof entry, binds its values, and appends its claims.
+// verifyLevel verifies level levelI: checks its proof entry, absorbs its values, and appends its claims.
 func (r *resources) verifyLevel(levelI int, proof Proof) error {
 	var err error
 	switch r.schedule[levelI].(type) {
@@ -272,8 +273,8 @@ func (r *resources) verifyLevel(levelI int, proof Proof) error {
 	if err != nil {
 		return fmt.Errorf("level %d: %v", levelI, err)
 	}
-	bind, include := r.levelPredicates(levelI)
-	constraint.BindGkrFinalEvalProof(r.transcript, proof[levelI].finalEvalProof, gkrcore.UniqueGateInputs(r.circuit, r.schedule[levelI]), bind, r.schedule[levelI])
+	absorb, include := r.levelPredicates(levelI)
+	constraint.AbsorbGkrFinalEvalProof(r.transcript, proof[levelI].finalEvalProof, gkrcore.UniqueGateInputs(r.circuit, r.schedule[levelI]), absorb, r.schedule[levelI])
 	gkrcore.AppendLevelClaims(r.claims, r.circuit, r.schedule[levelI], proof[levelI].finalEvalProof, r.outgoingEvalPoints[levelI], include)
 	return nil
 }
@@ -328,16 +329,16 @@ func Verify(c Circuit, schedule constraint.GkrProvingSchedule, logNbInstances in
 	// Derive the initial challenge point
 	firstChallenge := make([]rational.Element, r.nbVars)
 	for j := range r.nbVars {
-		firstChallenge[j] = r.transcript.Challenge()
+		firstChallenge[j] = r.transcript.Squeeze()
 	}
 	r.outgoingEvalPoints[len(schedule)] = [][]rational.Element{firstChallenge}
-	var boundOutputEvals []rational.Element
+	var absorbedOutputEvals []rational.Element
 	for i, w := range c.Outputs() {
 		if r.consolidated[w] {
-			boundOutputEvals = append(boundOutputEvals, outputLevel.finalEvalProof[i])
+			absorbedOutputEvals = append(absorbedOutputEvals, outputLevel.finalEvalProof[i])
 		}
 	}
-	r.transcript.Bind(boundOutputEvals...)
+	r.transcript.Absorb(absorbedOutputEvals...)
 	gkrcore.AppendOutputClaims(r.claims, c, firstChallenge, outputLevel.finalEvalProof, func(wI int) bool { return !r.consolidated[wI] })
 
 	for levelI := len(schedule) - 1; levelI >= 1; levelI-- {
