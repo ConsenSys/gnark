@@ -13,10 +13,10 @@ import (
 
 func bn254() Field { return gkr.PrimeField(ecc.BN254.ScalarField()) }
 
-// testFields runs under bn254() and under the KoalaBear E6 description, to check that both
-// agree on every gate's metadata.
+// testFields runs under bn254() and under the KoalaBear E6 and MamaBear E3 descriptions, to check
+// that all agree on every gate's metadata.
 func testFields() []Field {
-	return []Field{bn254(), gkr.KoalaBearE6()}
+	return []Field{bn254(), gkr.KoalaBearE6(), gkr.MamaBearE3()}
 }
 
 // test gate functions
@@ -347,14 +347,31 @@ func TestIsAdditive(t *testing.T) {
 	testIsAdditive(t, "x*y+y", mulAdd, false, false)
 }
 
-// TestExtensionDefiningRelation checks mul's reduction against KoalaBear's E6 tower generator's
-// defining relation, X⁶ = 2X³ + 2 (from its minimal polynomial X⁶ - 2X³ - 2).
+// TestExtensionDefiningRelation checks mul's reduction against the defining relation of each
+// extension's tower generator: KoalaBear's E6, X⁶ = 2X³ + 2 (from its minimal polynomial
+// X⁶ - 2X³ - 2), and MamaBear's E3, X³ = X + 1 (from X³ - X - 1).
 func TestExtensionDefiningRelation(t *testing.T) {
-	tester := gateTester{field: gkr.KoalaBearE6()}
+	for _, tc := range []struct {
+		name  string
+		field Field
+		power []int64 // the coefficients of Xⁿ, n the degree, in increasing degree
+	}{
+		{"KoalaBear E6", gkr.KoalaBearE6(), []int64{2, 0, 0, 2, 0, 0}},
+		{"MamaBear E3", gkr.MamaBearE3(), []int64{1, 1, 0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tester := gateTester{field: tc.field}
+			n := tc.field.Degree()
 
-	x := []*big.Int{big.NewInt(0), big.NewInt(1), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0)}
-	x6 := tester.pow(x, big.NewInt(6))
-	x3 := tester.pow(x, big.NewInt(3))
-	want := tester.add(tester.mul(tester.embed(big.NewInt(2)), x3), tester.embed(big.NewInt(2)))
-	require.True(t, tester.equal(x6, want))
+			x := make([]*big.Int, n)
+			want := make([]*big.Int, n)
+			for i := range x {
+				x[i] = big.NewInt(0)
+				want[i] = big.NewInt(tc.power[i])
+			}
+			x[1].SetInt64(1)
+
+			require.True(t, tester.equal(tester.pow(x, big.NewInt(int64(n))), want))
+		})
+	}
 }

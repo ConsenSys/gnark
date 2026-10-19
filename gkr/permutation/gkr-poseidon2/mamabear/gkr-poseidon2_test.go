@@ -116,6 +116,11 @@ func TestCompressor(t *testing.T) {
 	verifierClaims, err := gkrmamabear.Verify(compressor.Circuit, compressor.Schedule, logNbInstances, proof, newHasher())
 	require.NoError(t, err)
 	require.NoError(t, verifierClaims.Check(assignment))
+
+	var one mamabear.Element
+	one.SetOne()
+	assignment[compressor.Out[0]][0].Add(&assignment[compressor.Out[0]][0], &one)
+	require.Error(t, verifierClaims.Check(assignment))
 }
 
 func BenchmarkCompressor(b *testing.B) {

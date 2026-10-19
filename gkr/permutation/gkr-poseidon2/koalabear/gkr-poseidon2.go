@@ -21,6 +21,11 @@ import (
 // proving many instances of it at once with gkr/koalabear. Each instance maps
 // (left, right) to the right half of P(left, right), plus right, where P is gnark-crypto's
 // Poseidon2 permutation over koalabear.
+//
+// Build the circuit with NewCompressor and the assignment with Assignment(left, right), then prove
+// and verify with the Prove and Verify of gkr/koalabear; Verify's documentation covers
+// seeding the hasher and checking the claims. The number of instances must be a power of 2, at
+// least 2. Padding is the caller's job, and padding rows must be valid instances.
 type Compressor struct {
 	Circuit  gkrapi.Circuit
 	Schedule constraint.GkrProvingSchedule // the default schedule of gkrapi.Compile

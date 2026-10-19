@@ -117,6 +117,11 @@ func TestCompressor(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, verifierClaims.Check(assignment))
 
+	var one koalabear.Element
+	one.SetOne()
+	assignment[compressor.Out[0]][0].Add(&assignment[compressor.Out[0]][0], &one)
+	require.Error(t, verifierClaims.Check(assignment))
+
 	// The size of the proof for the default parameters, 836 + 104n elements for 2ⁿ instances, pins
 	// down the shape of the circuit and of its schedule.
 	nbElements := 0

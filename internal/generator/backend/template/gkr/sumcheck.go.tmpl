@@ -1,6 +1,5 @@
 {{ $gateEvaluator := "GateEvaluator" }}{{ if .Mixed }}{{ $gateEvaluator = "GateEvaluatorMixed" }}{{ end }}
 import (
-	"github.com/consensys/gnark/gkr"
 	"errors"
 	"sync"
 
@@ -103,7 +102,7 @@ func (e *zeroCheckLazyClaims) varsNum() int {
 }
 
 func (e *zeroCheckLazyClaims) degree(int) int {
-	return e.resources.circuit.ZeroCheckDegree(e.resources.schedule[e.levelI])
+	return gkrcore.ZeroCheckDegree(e.resources.circuit, e.resources.schedule[e.levelI])
 }
 
 // verifyFinalEval finalizes the verification of a level at the sumcheck evaluation point r.
@@ -118,7 +117,7 @@ func (e *zeroCheckLazyClaims) degree(int) int {
 func (e *zeroCheckLazyClaims) verifyFinalEval(r []{{ .ElementType }}, purportedValue {{ .ElementType }}, uniqueInputEvaluations []{{ .ElementType }}) error {
 	e.resources.outgoingEvalPoints[e.levelI] = [][]{{ .ElementType }}{r}
 	level := e.resources.schedule[e.levelI]
-	gateInputEvals := gkr.ReduplicateInputs(level, e.resources.circuit, uniqueInputEvaluations)
+	gateInputEvals := gkrcore.ReduplicateInputs(level, e.resources.circuit, uniqueInputEvaluations)
 
 	var claimedEvals polynomial.Polynomial{{ .ExtensionSuffix }}
 	levelWireI := 0
@@ -344,7 +343,7 @@ func (c *zeroCheckBase) init(r *resources, levelI int) {
 		c.foldingCoeff = r.transcript.Challenge()
 	}
 
-	uniqueInputs, inputIndices := r.circuit.InputMapping(level)
+	uniqueInputs, inputIndices := gkrcore.InputMapping(r.circuit, level)
 	c.input = make([]polynomial.MultiLin{{ .ExtensionSuffix }}, len(uniqueInputs))
 	{{- if .Mixed }}
 	c.baseInput = make([]basePolynomial.MultiLin, len(uniqueInputs))
@@ -461,7 +460,7 @@ func (r *resources) verifyLevelSetup(levelI int, proof Proof) ({{ .ElementType }
 func (r *resources) verifySumcheckLevel(levelI int, proof Proof) error {
 	claimedSum, lazyClaims := r.verifyLevelSetup(levelI, proof)
 	level := r.schedule[levelI].(*constraint.GkrSumcheckLevel)
-	return sumcheckVerify(lazyClaims, proof[levelI], claimedSum, r.circuit.ZeroCheckDegree(level), r.transcript)
+	return sumcheckVerify(lazyClaims, proof[levelI], claimedSum, gkrcore.ZeroCheckDegree(r.circuit, level), r.transcript)
 }
 
 // singleSourceZeroCheckClaims is the prover-side claim for a single-source
@@ -610,7 +609,7 @@ func (r *resources) verifySingleSourceZeroCheckLevel(levelI int, proof Proof) er
 	level := r.schedule[levelI].(*constraint.GkrSingleSourceZeroCheckLevel)
 	src := level.ClaimSources[0]
 	q := r.outgoingEvalPoints[src.Level][src.OutgoingClaimIndex]
-	degree := r.circuit.ZeroCheckDegree(level)
+	degree := gkrcore.ZeroCheckDegree(r.circuit, level)
 
 	challenges := make([]{{ .ElementType }}, r.nbVars)
 	gPrime := make(polynomial.Polynomial{{ .ExtensionSuffix }}, degree+1)
@@ -681,7 +680,7 @@ func (r *resources) verifySingleSourceZeroCheckLevel(levelI int, proof Proof) er
 // By convention, g₀ is a constant polynomial equal to the claimed sum.{{ $use }}
 func (c *zeroCheckClaims) {{ $name }}() polynomial.Polynomial{{ .Config.ExtensionSuffix }} {
 	level := c.resources.schedule[c.levelI].(*constraint.GkrSumcheckLevel)
-	degree := c.resources.circuit.ZeroCheckDegree(level)
+	degree := gkrcore.ZeroCheckDegree(c.resources.circuit, level)
 	nbUniqueInputs := len({{ $inputs }})
 	nbWires := len(c.eqs)
 
@@ -792,7 +791,7 @@ func (c *zeroCheckClaims) {{ $name }}() polynomial.Polynomial{{ .Config.Extensio
 // eliminating precomputed batchCoeffs and the multiply-by-one for wire 0.{{ $use }}
 func (c *singleSourceZeroCheckClaims) {{ $name }}() polynomial.Polynomial{{ .Config.ExtensionSuffix }} {
 	level := c.resources.schedule[c.levelI].(*constraint.GkrSingleSourceZeroCheckLevel)
-	degree := c.resources.circuit.ZeroCheckDegree(level)
+	degree := gkrcore.ZeroCheckDegree(c.resources.circuit, level)
 	nbUniqueInputs := len({{ $inputs }})
 	nbWires := len(c.gateEvaluatorPools)
 

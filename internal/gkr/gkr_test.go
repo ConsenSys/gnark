@@ -263,12 +263,12 @@ func TestLogNbInstances(t *testing.T) {
 			testCase, err := getTestCase(path)
 			assert.NoError(t, err)
 			serializedProof := testCase.Proof.Serialize()
-			logNbInstances, err := gkr.ComputeLogNbInstances(testCase.Circuit, testCase.Schedule, len(serializedProof), identityGate())
+			logNbInstances, err := gkrcore.ComputeLogNbInstances(testCase.Circuit, testCase.Schedule, len(serializedProof), identityGate())
 			if hasSumcheck(testCase.Schedule) {
 				assert.NoError(t, err)
 				assert.Equal(t, 1, logNbInstances)
 			} else {
-				assert.ErrorIs(t, err, gkr.ErrNbInstancesUndetermined)
+				assert.ErrorIs(t, err, gkrcore.ErrNbInstancesUndetermined)
 			}
 		}
 	}
