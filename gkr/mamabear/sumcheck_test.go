@@ -7,7 +7,6 @@ package gkrmamabear
 
 import (
 	"fmt"
-	"hash"
 
 	"github.com/consensys/gnark-crypto/field/mamabear/extensions/polynomial"
 	"github.com/consensys/gnark/internal/gkr/gkrcore"
@@ -22,7 +21,7 @@ import (
 	"testing"
 )
 
-func testSumcheckSingleClaimMultilin(polyInt []uint64, hashGenerator func() hash.Hash) error {
+func testSumcheckSingleClaimMultilin(polyInt []uint64, hashGenerator func() fieldHasher) error {
 	poly := make(polynomial.MultiLinE3, len(polyInt))
 	for i, n := range polyInt {
 		poly[i].SetUint64(n)
@@ -71,7 +70,7 @@ func TestSumcheckDeterministicHashSingleClaimMultilin(t *testing.T) {
 
 	const MaxStep = 4
 	const MaxStart = 4
-	hashGens := make([]func() hash.Hash, 0, MaxStart*MaxStep)
+	hashGens := make([]func() fieldHasher, 0, MaxStart*MaxStep)
 
 	for step := 0; step < MaxStep; step++ {
 		for startState := 0; startState < MaxStart; startState++ {

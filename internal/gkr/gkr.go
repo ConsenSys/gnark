@@ -370,7 +370,7 @@ func (r *variablesReader) hasNextN(n int) bool {
 func DeserializeProof(circuit Circuit, schedule constraint.GkrProvingSchedule, serializedProof []frontend.Variable) (Proof, error) {
 	proof := make(Proof, len(schedule)+1)
 	logNbInstances, err := gkr.ComputeLogNbInstances(circuit, schedule, len(serializedProof), identityGate())
-	if err != nil {
+	if err != nil && !errors.Is(err, gkr.ErrNbInstancesUndetermined) {
 		return nil, err
 	}
 

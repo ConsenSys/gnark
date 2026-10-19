@@ -1,7 +1,6 @@
 import (
 	"encoding/json"
 	"fmt"
-	"hash"
 	"github.com/consensys/gnark/internal/gkr/gkrcore"
 	"github.com/consensys/gnark/internal/rational"
 	"github.com/consensys/gnark/internal/rational/polynomial"
@@ -22,7 +21,7 @@ func runMultilin(testCaseInfo *sumcheckTestCaseInfo) error {
 	}
 
 	var (
-		hsh hash.Hash
+		hsh fieldHasher
 		err error
 	)
 

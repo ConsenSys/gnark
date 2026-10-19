@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/consensys/gnark-crypto/field/mamabear"
+	extensionsHash "github.com/consensys/gnark-crypto/field/mamabear/extensions/hash"
 	"github.com/consensys/gnark-crypto/field/mamabear/poseidon2"
-	gcHash "github.com/consensys/gnark-crypto/hash"
 	"github.com/consensys/gnark/gkr"
 	"github.com/consensys/gnark/gkr/gkrapi"
 	gkrmamabear "github.com/consensys/gnark/gkr/mamabear"
@@ -87,7 +87,7 @@ func TestCompressor(t *testing.T) {
 	left, right := randomHalves(params.Width, 1<<logNbInstances)
 	assignment := compressor.Assignment(left, right)
 
-	proof, proverClaims, err := gkrmamabear.Prove(compressor.Circuit, compressor.Schedule, assignment, gcHash.POSEIDON2_MAMABEAR.New())
+	proof, proverClaims, err := gkrmamabear.Prove(compressor.Circuit, compressor.Schedule, assignment, extensionsHash.NewBaseFieldHashAdapterE3(poseidon2.NewMerkleDamgardHasher()))
 	require.NoError(t, err)
 	require.NoError(t, proverClaims.Check(assignment))
 
@@ -109,7 +109,7 @@ func TestCompressor(t *testing.T) {
 		}
 	}
 
-	verifierClaims, err := gkrmamabear.Verify(compressor.Circuit, compressor.Schedule, logNbInstances, proof, gcHash.POSEIDON2_MAMABEAR.New())
+	verifierClaims, err := gkrmamabear.Verify(compressor.Circuit, compressor.Schedule, logNbInstances, proof, extensionsHash.NewBaseFieldHashAdapterE3(poseidon2.NewMerkleDamgardHasher()))
 	require.NoError(t, err)
 	require.NoError(t, verifierClaims.Check(assignment))
 }
@@ -125,7 +125,7 @@ func BenchmarkCompressor(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		_, _, err = gkrmamabear.Prove(compressor.Circuit, compressor.Schedule, compressor.Assignment(left, right), gcHash.POSEIDON2_MAMABEAR.New())
+		_, _, err = gkrmamabear.Prove(compressor.Circuit, compressor.Schedule, compressor.Assignment(left, right), extensionsHash.NewBaseFieldHashAdapterE3(poseidon2.NewMerkleDamgardHasher()))
 		require.NoError(b, err)
 	}
 }

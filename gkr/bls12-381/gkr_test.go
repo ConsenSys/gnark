@@ -7,7 +7,6 @@ package gkrbls12381
 
 import (
 	"fmt"
-	"hash"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,8 +17,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/polynomial"
-	gcHash "github.com/consensys/gnark-crypto/hash"
-	_ "github.com/consensys/gnark-crypto/hash/all" // registers the hash benchmarkGkrMiMC uses
+	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/poseidon2"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/gkr"
 	"github.com/consensys/gnark/gkr/gkrapi"
@@ -30,6 +28,11 @@ import (
 )
 
 var cache = gkrtesting.NewCache(gkr.PrimeField(ecc.BLS12_381.ScalarField()))
+
+// newPoseidon2Hasher returns a Poseidon2 hasher over the field's elements.
+func newPoseidon2Hasher() fieldHasher {
+	return poseidon2.NewMerkleDamgardHasher()
+}
 
 func TestNoGateTwoInstances(t *testing.T) {
 	// Testing a single instance is not possible because the sumcheck implementation doesn't cover the trivial 0-variate case
@@ -96,7 +99,7 @@ func TestEndToEndPoseidon2(t *testing.T) {
 	}
 	// The output column is left nil: Prove computes it.
 
-	proof, proverClaims, err := Prove(circuit, schedule, assignment, gcHash.POSEIDON2_BLS12_381.New())
+	proof, proverClaims, err := Prove(circuit, schedule, assignment, newPoseidon2Hasher())
 	require.NoError(t, err)
 
 	var flattened []fr.Element
@@ -109,7 +112,7 @@ func TestEndToEndPoseidon2(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		claims, err := Verify(circuit, schedule, assignment.NumVars(), deserialized, gcHash.POSEIDON2_BLS12_381.New())
+		claims, err := Verify(circuit, schedule, assignment.NumVars(), deserialized, newPoseidon2Hasher())
 		if err != nil {
 			return nil, err
 		}
@@ -124,6 +127,46 @@ func TestEndToEndPoseidon2(t *testing.T) {
 	tampered[0].Add(&tampered[0], &one)
 	_, err = verify(tampered)
 	assert.Error(t, err, "tampered proof accepted")
+}
+
+// TestCheckRejectsMismatchedLengths checks that Claims.Check rejects assignments of another size
+// than the claims', and ones missing a claimed wire.
+func TestCheckRejectsMismatchedLengths(t *testing.T) {
+	api := gkrapi.New()
+	x := api.NewInput()
+	y := api.NewInput()
+	z := api.Mul(x, y)
+	circuit, schedule, err := api.Compile(gkr.PrimeField(ecc.BLS12_381.ScalarField()), gkrapi.ConsolidateAll)
+	require.NoError(t, err)
+
+	elements := func(values ...uint64) []fr.Element {
+		res := make([]fr.Element, len(values))
+		for i, v := range values {
+			res[i] = fr.NewElement(v)
+		}
+		return res
+	}
+
+	// The prover proves instances 0 and 2 of the larger assignment below only.
+	proven := make(WireAssignment, len(circuit))
+	proven[x], proven[y] = elements(2, 4), elements(5, 6)
+	proof, _, err := Prove(circuit, schedule, proven, newMessageCounter(1, 1))
+	require.NoError(t, err)
+
+	claims, err := Verify(circuit, schedule, 1, proof, newMessageCounter(1, 1))
+	require.NoError(t, err)
+	assert.NoError(t, claims.Check(proven))
+
+	// Instances 1 and 3 of z are false.
+	larger := make(WireAssignment, len(circuit))
+	larger[x], larger[y], larger[z] = elements(2, 3, 4, 5), elements(5, 7, 6, 8), elements(10, 999, 24, 12345)
+	assert.Error(t, claims.Check(larger), "claims about 2 instances accepted against an assignment of 4")
+
+	inputsOnly := make(WireAssignment, len(circuit))
+	inputsOnly[x], inputsOnly[y] = elements(2, 4), elements(5, 6)
+	assert.NotPanics(t, func() {
+		assert.Error(t, claims.Check(inputsOnly), "claims on a wire accepted without an assignment")
+	})
 }
 
 // proveAndVerify proves assignment against schedule and verifies the proof rebuilt by
@@ -365,7 +408,7 @@ func benchmarkGkrMiMC(b *testing.B, nbInstances, mimcDepth int) {
 	//b.ResetTimer()
 	fmt.Println("constructing proof")
 	start = time.Now().UnixMicro()
-	_, _, err = Prove(c, schedule, assignment, gcHash.POSEIDON2_BLS12_381.New())
+	_, _, err = Prove(c, schedule, assignment, newPoseidon2Hasher())
 	proved := time.Now().UnixMicro() - start
 	fmt.Println("proved in", proved, "μs")
 	assert.NoError(b, err)
@@ -537,7 +580,7 @@ func unmarshalProof(printable gkrtesting.PrintableProof) (Proof, error) {
 
 type TestCase struct {
 	Circuit         gkr.SerializableCircuit
-	Hash            hash.Hash
+	Hash            fieldHasher
 	Proof           Proof
 	FullAssignment  WireAssignment
 	InOutAssignment WireAssignment
@@ -564,7 +607,7 @@ func newTestCase(path string) (*TestCase, error) {
 	}
 
 	circuit, _ := cache.GetCircuit(filepath.Join(dir, info.Circuit))
-	var _hash hash.Hash
+	var _hash fieldHasher
 	if _hash, err = hashFromDescription(info.Hash); err != nil {
 		return nil, err
 	}

@@ -20,7 +20,7 @@ import (
 // This does not make use of parallelism and represents polynomials as lists of coefficients.
 
 // transcript specializes gkrcore's generic hash transcript to this field.
-type transcript = gkrcore.HashTranscript[rational.Element, *rational.Element]
+type transcript = gkrcore.HashTranscript[rational.Element]
 
 // sumcheckClaims to a multi-sumcheck statement. i.e. one of the form ∑_{0≤i<2ⁿ} fⱼ(i) = cⱼ for 1 ≤ j ≤ m.
 // Later evolving into a claim of the form gⱼ = ∑_{0≤i<2ⁿ⁻ʲ} g(r₁, r₂, ..., rⱼ₋₁, Xⱼ, i...)

@@ -255,7 +255,11 @@ func (b *BlueprintProve) Solve(s constraint.Solver[constraint.U64], inst constra
 	}
 
 	// Create hasher and write base challenges
-	hsh := hash.NewHash(b.HashName + "_{{.FieldID}}")
+	hashName := b.HashName + "_{{.FieldID}}"
+	hsh, ok := hash.NewHash(hashName).(hash.FieldHasher[{{ .ElementType }}, {{ .ElementType }}])
+	if !ok {
+		return fmt.Errorf("hash %s does not implement hash.FieldHasher", hashName)
+	}
 
 	// Read initial challenges from instruction calldata (parse dynamically, no metadata)
 	// Format: [0]=totalSize, [1...]=challenge linear expressions
@@ -267,8 +271,7 @@ func (b *BlueprintProve) Solve(s constraint.Solver[constraint.U64], inst constra
 		// Copy directly from constraint.U64 to {{ .ElementType }} (both in Montgomery form)
 		var challenge {{ .ElementType }}
 		copy(challenge[:], val[:])
-		challengeBytes := challenge.Bytes()
-		hsh.Write(challengeBytes[:])
+		hsh.WriteField(challenge)
 	}
 
 	// Call the {{.FieldID}}-specific Prove function (assignments already WireAssignment type)
