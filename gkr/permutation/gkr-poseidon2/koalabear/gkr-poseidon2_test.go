@@ -92,20 +92,19 @@ func TestCompressor(t *testing.T) {
 	require.NoError(t, proverClaims.Check(assignment))
 
 	// Prove has computed the outputs.
-	permutation := poseidon2.NewDefaultPermutation()
+	reference := poseidon2.NewCompressor(poseidon2.NewDefaultPermutation())
 	half := params.Width / 2
+	leftRow := make([]koalabear.Element, half)
+	rightRow := make([]koalabear.Element, half)
+	expected := make([]koalabear.Element, half)
 	for instanceI := range 1 << logNbInstances {
-		var leftBytes, rightBytes []byte
 		for i := range half {
-			leftBytes = append(leftBytes, left[i][instanceI].Marshal()...)
-			rightBytes = append(rightBytes, right[i][instanceI].Marshal()...)
+			leftRow[i] = left[i][instanceI]
+			rightRow[i] = right[i][instanceI]
 		}
-		expected, err := permutation.Compress(leftBytes, rightBytes)
-		require.NoError(t, err)
+		reference.CompressField(expected, leftRow, rightRow)
 		for i := range half {
-			var out koalabear.Element
-			require.NoError(t, out.SetBytesCanonical(expected[i*koalabear.Bytes:(i+1)*koalabear.Bytes]))
-			assert.True(t, out.Equal(&assignment[compressor.Out[i]][instanceI]), "instance %d, output %d", instanceI, i)
+			assert.True(t, expected[i].Equal(&assignment[compressor.Out[i]][instanceI]), "instance %d, output %d", instanceI, i)
 		}
 	}
 
