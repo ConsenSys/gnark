@@ -24,6 +24,11 @@ func randomHalves(width, nbInstances int) (left, right [][]{{ .BaseElementType }
 	return columns(), columns()
 }
 
+// newHasher returns a hasher for the gadget's proofs.
+func newHasher() *extensionsHash.BaseFieldHashAdapter{{ .ExtensionSuffix }} {
+	return extensionsHash.NewBaseFieldHashAdapter{{ .ExtensionSuffix }}(poseidon2.NewMerkleDamgardHasher())
+}
+
 // TestAffineGateFewTerms checks affine gates whose sum has fewer than two terms.
 func TestAffineGateFewTerms(t *testing.T) {
 	var one, two {{ .BaseElementType }}
@@ -80,7 +85,7 @@ func TestCompressor(t *testing.T) {
 	left, right := randomHalves(params.Width, 1<<logNbInstances)
 	assignment := compressor.Assignment(left, right)
 
-	proof, proverClaims, err := {{ .PackageName }}.Prove(compressor.Circuit, compressor.Schedule, assignment, extensionsHash.NewBaseFieldHashAdapter{{ .ExtensionSuffix }}(poseidon2.NewMerkleDamgardHasher()))
+	proof, proverClaims, err := {{ .PackageName }}.Prove(compressor.Circuit, compressor.Schedule, assignment, newHasher())
 	require.NoError(t, err)
 	require.NoError(t, proverClaims.Check(assignment))
 
@@ -101,7 +106,7 @@ func TestCompressor(t *testing.T) {
 		}
 	}
 
-	verifierClaims, err := {{ .PackageName }}.Verify(compressor.Circuit, compressor.Schedule, logNbInstances, proof, extensionsHash.NewBaseFieldHashAdapter{{ .ExtensionSuffix }}(poseidon2.NewMerkleDamgardHasher()))
+	verifierClaims, err := {{ .PackageName }}.Verify(compressor.Circuit, compressor.Schedule, logNbInstances, proof, newHasher())
 	require.NoError(t, err)
 	require.NoError(t, verifierClaims.Check(assignment))
 
@@ -128,7 +133,7 @@ func BenchmarkCompressor(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		_, _, err = {{ .PackageName }}.Prove(compressor.Circuit, compressor.Schedule, compressor.Assignment(left, right), extensionsHash.NewBaseFieldHashAdapter{{ .ExtensionSuffix }}(poseidon2.NewMerkleDamgardHasher()))
+		_, _, err = {{ .PackageName }}.Prove(compressor.Circuit, compressor.Schedule, compressor.Assignment(left, right), newHasher())
 		require.NoError(b, err)
 	}
 }

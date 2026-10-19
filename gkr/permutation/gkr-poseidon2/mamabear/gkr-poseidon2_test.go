@@ -31,6 +31,11 @@ func randomHalves(width, nbInstances int) (left, right [][]mamabear.Element) {
 	return columns(), columns()
 }
 
+// newHasher returns a hasher for the gadget's proofs.
+func newHasher() *extensionsHash.BaseFieldHashAdapterE3 {
+	return extensionsHash.NewBaseFieldHashAdapterE3(poseidon2.NewMerkleDamgardHasher())
+}
+
 // TestAffineGateFewTerms checks affine gates whose sum has fewer than two terms.
 func TestAffineGateFewTerms(t *testing.T) {
 	var one, two mamabear.Element
@@ -87,7 +92,7 @@ func TestCompressor(t *testing.T) {
 	left, right := randomHalves(params.Width, 1<<logNbInstances)
 	assignment := compressor.Assignment(left, right)
 
-	proof, proverClaims, err := gkrmamabear.Prove(compressor.Circuit, compressor.Schedule, assignment, extensionsHash.NewBaseFieldHashAdapterE3(poseidon2.NewMerkleDamgardHasher()))
+	proof, proverClaims, err := gkrmamabear.Prove(compressor.Circuit, compressor.Schedule, assignment, newHasher())
 	require.NoError(t, err)
 	require.NoError(t, proverClaims.Check(assignment))
 
@@ -108,7 +113,7 @@ func TestCompressor(t *testing.T) {
 		}
 	}
 
-	verifierClaims, err := gkrmamabear.Verify(compressor.Circuit, compressor.Schedule, logNbInstances, proof, extensionsHash.NewBaseFieldHashAdapterE3(poseidon2.NewMerkleDamgardHasher()))
+	verifierClaims, err := gkrmamabear.Verify(compressor.Circuit, compressor.Schedule, logNbInstances, proof, newHasher())
 	require.NoError(t, err)
 	require.NoError(t, verifierClaims.Check(assignment))
 }
@@ -124,7 +129,7 @@ func BenchmarkCompressor(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		_, _, err = gkrmamabear.Prove(compressor.Circuit, compressor.Schedule, compressor.Assignment(left, right), extensionsHash.NewBaseFieldHashAdapterE3(poseidon2.NewMerkleDamgardHasher()))
+		_, _, err = gkrmamabear.Prove(compressor.Circuit, compressor.Schedule, compressor.Assignment(left, right), newHasher())
 		require.NoError(b, err)
 	}
 }
