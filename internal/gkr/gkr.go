@@ -78,7 +78,7 @@ type resources struct {
 	consolidated       []bool // the wires of schedule[0], indexed by wire
 }
 
-// identityGate is the identity gate LevelCircuit and ConsolidationView use to build level 0's view
+// identityGate is the identity gate LevelCircuit and consolidationView use to build level 0's view
 // of the circuit.
 func identityGate() gkr.GadgetGate {
 	return gkr.GadgetGate{Evaluate: gkrcore.Identity, NbIn: 1, Degree: 1}
@@ -98,7 +98,7 @@ func (e *zeroCheckLazyClaims) varsNum() int {
 }
 
 func (e *zeroCheckLazyClaims) degree(int) int {
-	return gkrcore.ZeroCheckDegree(e.r.circuit, e.r.schedule[e.levelI])
+	return e.r.circuit.ZeroCheckDegree(e.r.schedule[e.levelI])
 }
 
 // verifyFinalEval finalizes the verification of a level at the sumcheck evaluation point r.
@@ -144,7 +144,7 @@ func (r *resources) verifySkipLevel(levelI int, proof Proof) {
 	gkrcore.CollectOutgoingEvalPoints(level, levelI, r.outgoingEvalPoints)
 
 	finalEval := proof[levelI].FinalEvalProof
-	_, inputIndices := gkrcore.InputMapping(r.circuit, level)
+	_, inputIndices := r.circuit.InputMapping(level)
 	group := constraint.GkrClaimGroup(*level)
 
 	for levelWireI, wI := range group.Wires {
@@ -191,7 +191,7 @@ func (r *resources) verifyLevelSetup(levelI int, proof Proof) (frontend.Variable
 func (r *resources) verifySumcheckLevel(levelI int, proof Proof) error {
 	claimedSum, lazyClaims := r.verifyLevelSetup(levelI, proof)
 	if err := verifySumcheck(r.api, lazyClaims, proof[levelI], claimedSum,
-		gkrcore.ZeroCheckDegree(r.circuit, r.schedule[levelI]), r.t); err != nil {
+		r.circuit.ZeroCheckDegree(r.schedule[levelI]), r.t); err != nil {
 		return fmt.Errorf("sumcheck proof rejected at level %d: %v", levelI, err)
 	}
 	return nil
@@ -203,7 +203,7 @@ func (r *resources) verifySingleSourceZeroCheckLevel(levelI int, proof Proof) er
 	level := r.schedule[levelI].(*constraint.GkrSingleSourceZeroCheckLevel)
 	src := level.ClaimSources[0]
 	q := r.outgoingEvalPoints[src.Level][src.OutgoingClaimIndex]
-	degree := gkrcore.ZeroCheckDegree(r.circuit, level)
+	degree := r.circuit.ZeroCheckDegree(level)
 
 	challenges := make([]frontend.Variable, r.nbVars)
 	gPrime := make(polynomial.Polynomial, degree+1)
@@ -281,7 +281,7 @@ func Verify(api frontend.API, c Circuit, schedule constraint.GkrProvingSchedule,
 		schedule:           schedule,
 		outgoingEvalPoints: make([][][]frontend.Variable, len(schedule)+1),
 		nbVars:             logNbInstances,
-		claimValueIndices:  gkrcore.ClaimValueIndices(c, schedule),
+		claimValueIndices:  c.ClaimValueIndices(schedule),
 		claims:             make(Claims),
 		consolidated:       gkrcore.LevelWires(c, schedule[0]),
 	}
@@ -298,7 +298,7 @@ func Verify(api frontend.API, c Circuit, schedule constraint.GkrProvingSchedule,
 		return nil, fmt.Errorf("output level has %d evaluations, expected %d", len(outputLevel.FinalEvalProof), len(c.Outputs()))
 	}
 
-	view := gkrcore.LevelCircuit(c, schedule, 0, identityGate())
+	view := c.LevelCircuit(schedule, 0, identityGate())
 	for levelI, level := range schedule {
 		levelCircuit := c
 		if levelI == 0 {
@@ -378,12 +378,12 @@ func DeserializeProof(circuit Circuit, schedule constraint.GkrProvingSchedule, s
 	identity := identityGate()
 	reader := variablesReader(serializedProof)
 	for levelI, level := range schedule {
-		levelCircuit := gkrcore.LevelCircuit(circuit, schedule, levelI, identity)
+		levelCircuit := circuit.LevelCircuit(schedule, levelI, identity)
 		nbUniqueInputs := len(gkrcore.UniqueGateInputs(levelCircuit, level))
 		if _, isSkip := level.(*constraint.GkrSkipLevel); isSkip {
 			proof[levelI].FinalEvalProof = reader.nextN(nbUniqueInputs * level.NbOutgoingEvalPoints())
 		} else {
-			degree := gkrcore.ZeroCheckDegree(levelCircuit, level)
+			degree := levelCircuit.ZeroCheckDegree(level)
 			proof[levelI].PartialSumPolys = make([]polynomial.Polynomial, logNbInstances)
 			for j := range proof[levelI].PartialSumPolys {
 				proof[levelI].PartialSumPolys[j] = reader.nextN(degree)
