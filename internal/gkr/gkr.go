@@ -117,14 +117,18 @@ func (e *zeroCheckLazyClaims) verifyFinalEval(api frontend.API, r []frontend.Var
 	var terms []frontend.Variable
 	levelWireI := 0
 	for _, group := range level.ClaimGroups() {
+		eqs := make([]frontend.Variable, len(group.ClaimSources))
+		for k, src := range group.ClaimSources {
+			eqs[k] = polynomial.EvalEq(api, e.r.outgoingEvalPoints[src.Level][src.OutgoingClaimIndex], r)
+		}
+
 		for _, wI := range group.Wires {
 			wire := e.r.circuit[wI]
 
 			gateEval := wire.Gate.Evaluate(FrontendAPIWrapper{api}, perWireInputEvals[levelWireI]...)
 
-			for _, src := range group.ClaimSources {
-				eq := polynomial.EvalEq(api, e.r.outgoingEvalPoints[src.Level][src.OutgoingClaimIndex], r)
-				term := api.Mul(eq, gateEval)
+			for k := range group.ClaimSources {
+				term := api.Mul(eqs[k], gateEval)
 				terms = append(terms, term)
 			}
 			levelWireI++
